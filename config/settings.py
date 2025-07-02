@@ -57,6 +57,7 @@ BUDGET_LIMITS = {
     "Housing": 150000,
     "Education": 25000,
     "Travel": 50000,
+    "Mila": 30000,
     "Other": 30000
 }
 

@@ -9,6 +9,8 @@ from typing import Dict, List, Optional, Tuple
 import calendar
 from datetime import datetime, date, timedelta
 import numpy as np
+import json
+from pathlib import Path
 
 from config.settings import DEFAULT_CATEGORIES, CURRENCY_SYMBOL, BUDGET_LIMITS
 from .database import get_expenses_df
@@ -272,26 +274,47 @@ def create_payment_method_chart(expenses_df: pd.DataFrame) -> go.Figure:
 
 
 def create_top_merchants_chart(expenses_df: pd.DataFrame, top_n: int = 10) -> go.Figure:
-    """Create a horizontal bar chart of top merchants by spending."""
-    merchant_totals = expenses_df.groupby('merchant')['amount'].sum().sort_values(ascending=True).tail(top_n)
+    """Create a bar chart showing top merchants by spending."""
+    if expenses_df.empty:
+        return go.Figure()
+
+    # Get top merchants
+    top_merchants = expenses_df.groupby('merchant').agg({
+        'amount': 'sum',
+        'id': 'count'
+    }).reset_index()
     
-    fig = go.Figure(data=[
-        go.Bar(
-            x=merchant_totals.values,
-            y=merchant_totals.index,
-            orientation='h',
-            marker_color='#FECA57',
-            hovertemplate='<b>%{y}</b><br>Total: ' + CURRENCY_SYMBOL + '%{x:,.2f}<extra></extra>'
-        )
-    ])
+    top_merchants = top_merchants.nlargest(top_n, 'amount')
+    top_merchants = top_merchants.sort_values('amount', ascending=True)  # For bottom-to-top display
+
+    # Generate a color palette
+    colors = px.colors.qualitative.Set3[:top_n]  # Using Plotly's Set3 palette for distinct colors
     
+    # Create figure
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        x=top_merchants['amount'],
+        y=top_merchants['merchant'],
+        orientation='h',
+        marker_color=colors,
+        text=top_merchants['amount'].apply(lambda x: f'¥{x:,.0f}'),
+        textposition='auto',
+        hovertemplate='<b>%{y}</b><br>' +
+                      'Total: ¥%{x:,.0f}<br>' +
+                      '<extra></extra>'
+    ))
+
     fig.update_layout(
         title=f"Top {top_n} Merchants by Spending",
-        xaxis_title=f"Total Spending ({CURRENCY_SYMBOL})",
+        xaxis_title="Total Spending (¥)",
         yaxis_title="Merchant",
-        height=max(400, top_n * 30)
+        height=max(400, 50 * top_n),  # Dynamic height based on number of merchants
+        showlegend=False,
+        xaxis=dict(showgrid=True),
+        yaxis=dict(showgrid=False)
     )
-    
+
     return fig
 
 
@@ -605,4 +628,126 @@ def create_category_budget_allocation(df: pd.DataFrame) -> go.Figure:
     )
 
     return fig
+
+
+def create_spending_by_category_pie(expenses: List[Dict], start_date: Optional[str] = None, end_date: Optional[str] = None) -> go.Figure:
+    """Create a pie chart showing spending distribution by category."""
+    df = pd.DataFrame(expenses)
+    
+    # Apply date filters if provided
+    if start_date:
+        df = df[df['date'] >= start_date]
+    if end_date:
+        df = df[df['date'] <= end_date]
+    
+    # Group by category and sum amounts
+    category_totals = df.groupby('category')['amount'].sum().reset_index()
+    
+    # Load category colors
+    with open(Path(__file__).parent.parent / 'config' / 'categories.json', 'r') as f:
+        categories = json.load(f)
+    
+    # Create color map
+    color_map = {cat: color for cat, color in categories.items() if cat != '_metadata'}
+    
+    # Create pie chart
+    fig = go.Figure(data=[go.Pie(
+        labels=category_totals['category'],
+        values=category_totals['amount'],
+        marker_colors=[color_map.get(cat, '#747D8C') for cat in category_totals['category']],
+        textinfo='label+percent',
+        hovertemplate="<b>%{label}</b><br>" +
+                      "Amount: ¥%{value:,.0f}<br>" +
+                      "<extra></extra>"
+    )])
+    
+    fig.update_layout(
+        title="Spending by Category",
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
+    )
+    
+    return fig
+
+
+def create_spending_trend(expenses: List[Dict], category_filter: Optional[str] = None) -> go.Figure:
+    """Create a line chart showing spending trends over time with optional category filtering."""
+    df = pd.DataFrame(expenses)
+    
+    # Apply category filter if provided
+    if category_filter:
+        df = df[df['category'] == category_filter]
+    
+    # Group by date and sum amounts
+    daily_totals = df.groupby('date')['amount'].sum().reset_index()
+    
+    # Sort by date
+    daily_totals = daily_totals.sort_values('date')
+    
+    # Calculate cumulative sum
+    daily_totals['cumulative'] = daily_totals['amount'].cumsum()
+    
+    # Create figure with secondary y-axis
+    fig = go.Figure()
+    
+    # Add daily spending bars
+    fig.add_trace(go.Bar(
+        x=daily_totals['date'],
+        y=daily_totals['amount'],
+        name='Daily Spending',
+        hovertemplate="Date: %{x}<br>" +
+                      "Amount: ¥%{y:,.0f}<br>" +
+                      "<extra></extra>"
+    ))
+    
+    # Add cumulative line
+    fig.add_trace(go.Scatter(
+        x=daily_totals['date'],
+        y=daily_totals['cumulative'],
+        name='Cumulative',
+        yaxis='y2',
+        line=dict(color='red'),
+        hovertemplate="Date: %{x}<br>" +
+                      "Cumulative: ¥%{y:,.0f}<br>" +
+                      "<extra></extra>"
+    ))
+    
+    title = "Spending Trend"
+    if category_filter:
+        title += f" - {category_filter}"
+    
+    fig.update_layout(
+        title=title,
+        xaxis_title="Date",
+        yaxis_title="Daily Amount (¥)",
+        yaxis2=dict(
+            title="Cumulative Amount (¥)",
+            overlaying='y',
+            side='right'
+        ),
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        barmode='stack'
+    )
+    
+    return fig
+
+
+def get_available_categories() -> List[str]:
+    """Get list of available expense categories."""
+    with open(Path(__file__).parent.parent / 'config' / 'categories.json', 'r') as f:
+        categories = json.load(f)
+    return [cat for cat in categories.keys() if cat != '_metadata']
     

@@ -2,6 +2,7 @@
 Enhanced OCR utilities for receipt processing.
 """
 import re
+import os
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
@@ -139,18 +140,30 @@ def extract_amount(text: str) -> Tuple[Optional[float], float]:
     
     def parse_amount(amount_str: str) -> Optional[float]:
         """Helper function to parse amount strings with proper validation."""
-        # Remove currency symbols, spaces, and commas
-        clean_str = re.sub(r'[¥\\,\s]', '', amount_str)
+        # Remove currency symbols and normalize spaces
+        clean_str = amount_str.replace('¥', '').replace('\\', '').strip()
+        
+        # Handle OCR artifacts that split numbers
+        clean_str = re.sub(r'\s+', '', clean_str)  # Remove all spaces
+        clean_str = re.sub(r'[.。、]{2,}', '', clean_str)  # Remove repeated dots
+        clean_str = re.sub(r'[.。、](?!\d)', '', clean_str)  # Remove dots not followed by digits
+        
+        # Remove any remaining special characters
+        clean_str = re.sub(r'[^\d,.]', '', clean_str)
+        
         try:
-            amount = float(clean_str)
-            # Validate the original format had proper comma separation for thousands
-            if ',' in amount_str:
-                parts = amount_str.replace('¥', '').replace('\\', '').strip().split(',')
-                # First part should be 1-3 digits, rest should be exactly 3 digits
-                if not (len(parts[0].strip()) <= 3 and all(len(p.strip()) == 3 for p in parts[1:])):
-                    logger.info(f"Invalid comma format in '{amount_str}'")
+            # Handle both comma and dot as thousand separators
+            parts = re.split(r'[,.]', clean_str)
+            if len(parts) > 1:
+                # If we have separators, validate the parts
+                if not all(len(p) <= 3 for p in parts):
+                    logger.info(f"Invalid number format in '{amount_str}'")
                     return None
+            
+            # Join all parts and convert to float
+            amount = float(''.join(parts))
             return amount
+            
         except ValueError:
             logger.info(f"Failed to parse amount '{amount_str}'")
             return None
@@ -158,10 +171,10 @@ def extract_amount(text: str) -> Tuple[Optional[float], float]:
     # Common patterns for Japanese and international amounts, ordered by priority
     amount_patterns = [
         # Exact Maruetsu credit card total patterns
-        (r'クレ.*?金額\s*[¥\\]?\s*(\d{1,3}(?:,\d{3})+)', 0.98),  # Credit amount (must have commas)
-        (r'(?:合計|お会計)\s*[¥\\]?\s*(\d{1,3}(?:,\d{3})+)', 0.95),  # Final total (must have commas)
-        (r'(?:税込(?:合計)?|消費税等?込?(?:合計)?)\s*[¥\\]?\s*(\d{1,3}(?:,\d{3})+)', 0.9),  # Tax-included total
-        (r'(?:小計|お買上げ金額)\s*[¥\\]?\s*(\d{1,3}(?:,\d{3})+)', 0.8),  # Subtotal
+        (r'クレ.*?金額\s*[¥\\]?\s*(\d[\d,.\s]*\d)', 0.98),  # Credit amount
+        (r'(?:合計|お会計|total)\s*[¥\\]?\s*(\d[\d,.\s]*\d)', 0.95),  # Final total
+        (r'(?:税込(?:合計)?|消費税等?込?(?:合計)?)\s*[¥\\]?\s*(\d[\d,.\s]*\d)', 0.9),  # Tax-included total
+        (r'(?:小計|お買上げ金額)\s*[¥\\]?\s*(\d[\d,.\s]*\d)', 0.8),  # Subtotal
     ]
     
     candidates = []
@@ -186,7 +199,7 @@ def extract_amount(text: str) -> Tuple[Optional[float], float]:
                     continue
                 
                 # Basic validation
-                if amount <= 0 or amount > 10000000:  # Ignore invalid amounts
+                if amount <= 0 or amount > 1000000:  # Ignore invalid amounts
                     logger.info(f"Ignoring amount {amount} - out of valid range")
                     continue
                 
@@ -209,8 +222,13 @@ def extract_amount(text: str) -> Tuple[Optional[float], float]:
                     curr_confidence -= 0.3
                     logger.info(f"Penalizing amount {amount} - looks like item price/quantity")
                 
+                # Penalize amounts that look like phone numbers, card numbers, etc.
+                if re.search(r'(?:電話|TEL|FAX|カード.*番号|ID|No\.?)', line, re.IGNORECASE):
+                    curr_confidence -= 0.5
+                    logger.info(f"Penalizing amount {amount} - looks like phone/card number")
+                
                 # Only accept amounts that appear in the expected format
-                if amount_str in line:
+                if re.sub(r'\s+', '', amount_str) in re.sub(r'\s+', '', line):
                     candidates.append((amount, min(curr_confidence, 1.0)))
                     logger.info(f"Added candidate: amount={amount}, confidence={curr_confidence}")
                 else:
@@ -291,11 +309,13 @@ def extract_merchant(text: str) -> Tuple[Optional[str], float]:
         r'マルエツ',
         r'まるえつ',
         r'MARUETSU',
-        r'maruetsu'
+        r'maruetsu',
+        r'マー',  # Common OCR fragment for マルエツ
+        r'のツ'   # Common OCR fragment for マルエツ
     ]
     
-    # Check first few lines for Maruetsu patterns
-    for i, line in enumerate(lines[:3]):  # Only check first 3 lines
+    # Check all lines for Maruetsu patterns
+    for line in lines:
         line = line.strip()
         if not line:
             continue
@@ -305,8 +325,8 @@ def extract_merchant(text: str) -> Tuple[Optional[str], float]:
             if re.search(pattern, line, re.IGNORECASE):
                 return 'maruetsu', 0.95
         
-        # Look for partial matches
-        if any(p.lower() in line.lower() for p in ['maru', 'マル', 'まる']):
+        # Look for partial matches with higher tolerance
+        if any(p.lower() in line.lower() for p in ['マル', 'まる', 'maru']):
             return 'maruetsu', 0.8
     
     # Fallback: return first non-empty line if it's short enough to be a store name
@@ -386,6 +406,33 @@ def batch_extract_text(image_paths: List[Path], **kwargs) -> dict:
         results[str(image_path)] = text
     
     return results
+
+def process_receipt(image_path: str, debug: bool = False) -> ExtractedData:
+    """
+    Process a receipt image and extract relevant information.
+    
+    Args:
+        image_path: Path to the receipt image
+        debug: If True, print debug information
+    
+    Returns:
+        ExtractedData object containing the extracted information
+    """
+    if debug:
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)
+    
+    # Convert string path to Path object
+    path = Path(image_path)
+    
+    # Validate image
+    if not is_valid_image(path):
+        logger.error(f"Invalid image file: {path}")
+        return ExtractedData()
+    
+    # Extract text and data
+    return extract_text_from_image(path)
 
 # Usage examples:
 if __name__ == "__main__":

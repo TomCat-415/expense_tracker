@@ -3,7 +3,7 @@ Expense Tracker Application
 """
 import streamlit as st
 from pathlib import Path
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import pandas as pd
 import time
 
@@ -19,7 +19,7 @@ from utils.database import (
     create_backup,
     restore_from_backup
 )
-from utils.ocr import extract_text_from_image
+from utils.ocr import extract_text_from_image, process_receipt
 from utils.charts import (
     create_daily_spending_chart,
     create_top_merchants_chart,
@@ -28,7 +28,10 @@ from utils.charts import (
     create_category_budget_allocation,
     create_weekly_comparison_chart,
     create_monthly_comparison_chart,
-    create_spending_forecast
+    create_spending_forecast,
+    create_spending_trend,
+    create_spending_by_category_pie,
+    get_available_categories
 )
 from config.settings import (
     DEFAULT_CATEGORIES,
@@ -108,34 +111,58 @@ with tab1:
     st.header("📊 Dashboard")
     
     if df.empty:
-        st.info("No expenses recorded yet. Add some expenses to see your dashboard!")
+        st.info("No expenses to analyze. Add some expenses to see analytics!")
     else:
-        # Calculate summary statistics
-        total_expenses = df['amount'].sum()
-        avg_daily = df.groupby(df['date'])['amount'].sum().mean()
-        num_transactions = len(df)
+        # Calculate KPI metrics
+        total_spending = df['amount'].sum()
+        daily_avg = df.groupby('date')['amount'].sum().mean()
+        total_transactions = len(df)
         
-        # Display metrics
-        col1, col2, col3 = st.columns(3)
+        # Display KPI metrics in columns
+        kpi1, kpi2, kpi3 = st.columns(3)
+        with kpi1:
+            st.metric("Total Spending", f"¥{total_spending:,.0f}")
+        with kpi2:
+            st.metric("Daily Average", f"¥{daily_avg:,.0f}")
+        with kpi3:
+            st.metric("Total Transactions", f"{total_transactions:,}")
+        
+        st.markdown("---")
+        
+        # Daily spending trend
+        st.plotly_chart(
+            create_daily_spending_chart(df),
+            use_container_width=True,
+            key="daily_spending"
+        )
+        
+        # Create two columns for the pie chart and top merchants
+        col1, col2 = st.columns(2)
+        
         with col1:
-            st.metric("Total Expenses", f"¥{total_expenses:,.0f}")
+            # Category spending distribution
+            st.plotly_chart(
+                create_spending_by_category_pie(
+                    df.to_dict('records')
+                ),
+                use_container_width=True,
+                key="dashboard_category_pie"
+            )
+        
         with col2:
-            st.metric("Average Daily", f"¥{avg_daily:,.0f}")
-        with col3:
-            st.metric("Transactions", num_transactions)
+            # Top merchants chart
+            st.plotly_chart(
+                create_top_merchants_chart(df),
+                use_container_width=True,
+                key="dashboard_merchants"
+            )
         
-        # Display charts
-        st.subheader("Daily Spending")
-        daily_chart = create_daily_spending_chart(df)
-        st.plotly_chart(daily_chart, use_container_width=True)
-        
-        st.subheader("Top Merchants")
-        merchants_chart = create_top_merchants_chart(df)
-        st.plotly_chart(merchants_chart, use_container_width=True)
-        
-        st.subheader("Monthly Average")
-        monthly_chart = create_monthly_average_chart(df)
-        st.plotly_chart(monthly_chart, use_container_width=True)
+        # Monthly average chart below
+        st.plotly_chart(
+            create_monthly_average_chart(df),
+            use_container_width=True,
+            key="monthly_average"
+        )
 
 # ---------- Add Expense ----------
 with tab2:
@@ -364,7 +391,7 @@ with tab3:
 
                                     with st.spinner("Saving expense..."):
                                         # Move receipt to processed folder
-                                        processed_path = RECEIPTS_DIR / temp_path.name
+                                        processed_path = PROCESSED_RECEIPTS_DIR / temp_path.name
                                         temp_path.rename(processed_path)
                                         expense_data["receipt_path"] = str(processed_path)
                                         
@@ -379,8 +406,12 @@ with tab3:
 
             except Exception as e:
                 show_error(f"Error processing {uploaded.name}: {str(e)}")
-                if temp_path.exists():
+                if 'temp_path' in locals() and temp_path.exists():
                     temp_path.unlink()  # Clean up temp file
+                # Move to failed folder
+                failed_path = FAILED_RECEIPTS_DIR / uploaded.name
+                with open(failed_path, "wb") as f:
+                    f.write(uploaded.getvalue())
 
 # ---------- All Expenses ----------
 with tab4:
@@ -412,7 +443,7 @@ with tab4:
 
         # Display expenses with pagination
         st.markdown("### 🧾 Your Expenses")
-        
+
         total_pages = max(1, -(-len(df) // st.session_state.expenses_per_page))  # Ceiling division, minimum 1 page
         
         # Only show pagination if there's more than one page
@@ -496,35 +527,30 @@ with tab4:
             help="Download all filtered expenses as CSV"
         )
 
-# ---------- Analytics ----------
+# ---------- Enhanced Analytics ----------
 with tab5:
     st.header("📊 Enhanced Analytics")
-    
+
     if df.empty:
         st.warning("No expenses found. Add some expenses to see analytics.")
     else:
         # Time period selector
-        time_period = st.radio(
-            "Select Time Period",
-            ["Last 30 Days", "Last 3 Months", "Last 6 Months", "Last Year", "All Time"],
-            horizontal=True
+        time_period = st.slider(
+            "Select Time Period (Days)",
+            min_value=7,
+            max_value=90,
+            value=30,
+            step=1,
+            help="Select the number of days of data to analyze"
         )
-        
+
         # Filter data based on selected time period
-        today = pd.Timestamp.now()
-        if time_period == "Last 30 Days":
-            df = df[df['date'] >= today - pd.Timedelta(days=30)]
-        elif time_period == "Last 3 Months":
-            df = df[df['date'] >= today - pd.Timedelta(days=90)]
-        elif time_period == "Last 6 Months":
-            df = df[df['date'] >= today - pd.Timedelta(days=180)]
-        elif time_period == "Last Year":
-            df = df[df['date'] >= today - pd.Timedelta(days=365)]
+        cutoff_date = pd.Timestamp.now() - pd.Timedelta(days=time_period)
+        filtered_df = df[df['date'] >= cutoff_date]
         
         # Create tabs for different analytics views
         analytics_tabs = st.tabs([
             "Budget Tracking",
-            "Spending Trends",
             "Time Comparisons",
             "Forecasting"
         ])
@@ -533,62 +559,45 @@ with tab5:
         with analytics_tabs[0]:
             st.subheader("Budget Tracking")
             
-            # Monthly budget tracking
-            budget_fig = create_budget_tracking_chart(df)
-            st.plotly_chart(budget_fig, use_container_width=True)
+            # Monthly budget tracking using filtered data
+            budget_fig = create_budget_tracking_chart(filtered_df)
+            st.plotly_chart(budget_fig, use_container_width=True, key="budget_tracking")
             
-            # Category budget allocation
-            allocation_fig = create_category_budget_allocation(df)
-            st.plotly_chart(allocation_fig, use_container_width=True)
+            # Category budget allocation using filtered data
+            allocation_fig = create_category_budget_allocation(filtered_df)
+            st.plotly_chart(allocation_fig, use_container_width=True, key="budget_allocation")
             
-            # Budget alerts
-            current_month = datetime.now().replace(day=1)
-            month_mask = (df['date'] >= current_month)
-            monthly_spending = df[month_mask].groupby('category')['amount'].sum()
+            # Budget alerts using filtered data
+            monthly_spending = filtered_df.groupby('category')['amount'].sum()
             
             for category, budget in BUDGET_LIMITS.items():
+                # Adjust budget for the time period
+                days_in_period = min(time_period, 30)  # Cap at 30 days for budget comparison
+                adjusted_budget = (budget / 30) * days_in_period
                 spent = monthly_spending.get(category, 0)
-                percentage = (spent / budget) * 100
+                percentage = (spent / adjusted_budget * 100) if adjusted_budget > 0 else 0
                 
                 if percentage >= BUDGET_ALERT_THRESHOLDS["danger"]:
-                    st.error(f"⚠️ {category}: {percentage:.1f}% of budget used (¥{spent:,.0f} / ¥{budget:,.0f})")
+                    st.error(f"⚠️ {category}: {percentage:.1f}% of budget used (¥{spent:,.0f} / ¥{adjusted_budget:,.0f})")
                 elif percentage >= BUDGET_ALERT_THRESHOLDS["warning"]:
-                    st.warning(f"⚠️ {category}: {percentage:.1f}% of budget used (¥{spent:,.0f} / ¥{budget:,.0f})")
-        
-        # Spending Trends Tab
-        with analytics_tabs[1]:
-            st.subheader("Spending Trends")
-            
-            # Daily spending pattern
-            daily_spending = df.groupby('date')['amount'].sum()
-            
-            # Calculate key metrics
-            total_spent = daily_spending.sum()
-            avg_daily = daily_spending.mean()
-            max_daily = daily_spending.max()
-            
-            # Display metrics
-            metrics_cols = st.columns(4)
-            metrics_cols[0].metric("Total Spent", f"¥{total_spent:,.0f}")
-            metrics_cols[1].metric("Avg. Daily", f"¥{avg_daily:,.0f}")
-            metrics_cols[2].metric("Max. Daily", f"¥{max_daily:,.0f}")
-            metrics_cols[3].metric("Days Tracked", len(daily_spending))
-            
-            # Weekly comparison chart
-            weekly_fig = create_weekly_comparison_chart(df)
-            st.plotly_chart(weekly_fig, use_container_width=True)
+                    st.warning(f"⚠️ {category}: {percentage:.1f}% of budget used (¥{spent:,.0f} / ¥{adjusted_budget:,.0f})")
         
         # Time Comparisons Tab
-        with analytics_tabs[2]:
+        with analytics_tabs[1]:
             st.subheader("Time Comparisons")
             
-            # Monthly comparison across years
-            monthly_fig = create_monthly_comparison_chart(df)
-            st.plotly_chart(monthly_fig, use_container_width=True)
+            # Weekly comparison chart using filtered data
+            weekly_fig = create_weekly_comparison_chart(filtered_df)
+            st.plotly_chart(weekly_fig, use_container_width=True, key="weekly_comparison")
             
-            # Year-over-year analysis
-            if len(df['date'].dt.year.unique()) > 1:
-                yearly_spending = df.groupby(df['date'].dt.year)['amount'].sum()
+            # Monthly comparison chart using filtered data
+            monthly_fig = create_monthly_comparison_chart(filtered_df)
+            st.plotly_chart(monthly_fig, use_container_width=True, key="monthly_comparison")
+            
+            # Year-over-year analysis if filtered data spans multiple years
+            years = filtered_df['date'].dt.year.unique()
+            if len(years) > 1:
+                yearly_spending = filtered_df.groupby(filtered_df['date'].dt.year)['amount'].sum()
                 yoy_change = (yearly_spending.iloc[-1] / yearly_spending.iloc[-2] - 1) * 100
                 st.metric(
                     "Year-over-Year Change",
@@ -597,7 +606,7 @@ with tab5:
                 )
         
         # Forecasting Tab
-        with analytics_tabs[3]:
+        with analytics_tabs[2]:
             st.subheader("Spending Forecast")
             
             # Forecast period selector
@@ -610,16 +619,16 @@ with tab5:
                 help="Select the number of days to forecast"
             )
             
-            # Create forecast
-            forecast_fig, predicted_total = create_spending_forecast(df, forecast_days)
-            st.plotly_chart(forecast_fig, use_container_width=True)
+            # Create forecast using filtered data
+            forecast_fig, predicted_total = create_spending_forecast(filtered_df, forecast_days)
+            st.plotly_chart(forecast_fig, use_container_width=True, key="spending_forecast")
             
             # Display forecast summary
             st.info(f"Predicted spending for the next {forecast_days} days: ¥{predicted_total:,.0f}")
             
-            # Monthly average for comparison
-            monthly_avg = df.groupby(
-                [df['date'].dt.year, df['date'].dt.month]
+            # Monthly average from filtered data for comparison
+            monthly_avg = filtered_df.groupby(
+                [filtered_df['date'].dt.year, filtered_df['date'].dt.month]
             )['amount'].sum().mean()
             
             st.metric(
@@ -632,242 +641,93 @@ with tab5:
 with tab6:
     st.header("🗄️ Data Management")
     
-    # Create tabs for different data management features
-    data_tabs = st.tabs([
-        "Import/Export",
-        "Backup/Restore",
-        "Bulk Operations"
-    ])
+    # Create two columns for export and import
+    col1, col2 = st.columns(2)
     
-    # Import/Export Tab
-    with data_tabs[0]:
-        st.subheader("Import/Export Data")
-        
-        # Import section
-        with st.expander("Import from CSV", expanded=True):
-            uploaded_csv = st.file_uploader(
-                "Upload CSV File",
-                type=["csv"],
-                help="Upload a CSV file with expense data"
+    with col1:
+        st.subheader("Export Data")
+        if st.button("Download Expenses CSV"):
+            csv = convert_df_to_csv(df)
+            st.download_button(
+                label="Click to Download",
+                data=csv,
+                file_name='expenses.csv',
+                mime='text/csv',
             )
-            
-            if uploaded_csv:
-                try:
-                    # Save uploaded file temporarily
-                    temp_csv = Path("data") / "temp_import.csv"
-                    with open(temp_csv, "wb") as f:
-                        f.write(uploaded_csv.getvalue())
-                    
-                    # Preview data
-                    df = pd.read_csv(temp_csv)
-                    st.write("Preview of data to import:")
-                    st.dataframe(df.head())
-                    
-                    if st.button("Import Data", use_container_width=True):
-                        with st.spinner("Importing data..."):
-                            total, imported, errors = import_from_csv(temp_csv)
-                            
-                            st.success(f"✅ Imported {imported} out of {total} records")
-                            
-                            if errors:
-                                with st.expander("Show Import Errors"):
-                                    for error in errors:
-                                        st.error(error)
-                    
-                    # Clean up
-                    temp_csv.unlink()
-                    
-                except Exception as e:
-                    show_error(f"Error importing data: {str(e)}")
-        
-        # Export section
-        with st.expander("Export to CSV", expanded=True):
-            export_col1, export_col2 = st.columns(2)
-            
-            with export_col1:
-                start_date = st.date_input(
-                    "Start Date",
-                    value=None,
-                    help="Optional: Export expenses from this date"
-                )
-            
-            with export_col2:
-                end_date = st.date_input(
-                    "End Date",
-                    value=None,
-                    help="Optional: Export expenses until this date"
-                )
-            
-            if st.button("Export Data", use_container_width=True):
-                try:
-                    # Create export file
-                    export_file = Path("data") / f"expenses_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-                    
-                    # Export data
-                    with st.spinner("Exporting data..."):
-                        record_count = export_to_csv(
-                            export_file,
-                            start_date=start_date if start_date else None,
-                            end_date=end_date if end_date else None
-                        )
-                    
-                    # Offer download
-                    with open(export_file, "rb") as f:
-                        st.download_button(
-                            "📥 Download Export",
-                            f,
-                            file_name=export_file.name,
-                            mime="text/csv",
-                            use_container_width=True
-                        )
-                    
-                    st.success(f"✅ Exported {record_count} records")
-                    
-                    # Clean up
-                    export_file.unlink()
-                    
-                except Exception as e:
-                    show_error(f"Error exporting data: {str(e)}")
     
-    # Backup/Restore Tab
-    with data_tabs[1]:
-        st.subheader("Backup & Restore")
-        
-        # Backup section
-        with st.expander("Create Backup", expanded=True):
-            if st.button("Create New Backup", use_container_width=True):
-                try:
-                    with st.spinner("Creating backup..."):
-                        backup_file = create_backup(Path("data/backups"))
-                        st.success(f"✅ Backup created: {backup_file}")
-                        
-                        # Offer download
-                        with open(backup_file, "rb") as f:
-                            st.download_button(
-                                "📥 Download Backup",
-                                f,
-                                file_name=Path(backup_file).name,
-                                mime="application/json",
-                                use_container_width=True
+    with col2:
+        st.subheader("Import Data")
+        uploaded_file = st.file_uploader("Upload CSV", type=['csv'])
+        if uploaded_file is not None:
+            try:
+                import_df = pd.read_csv(uploaded_file)
+                required_columns = ['date', 'amount', 'category', 'merchant', 'description']
+                
+                if all(col in import_df.columns for col in required_columns):
+                    # Convert date strings to datetime
+                    import_df['date'] = pd.to_datetime(import_df['date'])
+                    
+                    if st.button("Import Data"):
+                        # Append new data to database
+                        for _, row in import_df.iterrows():
+                            add_expense(
+                                date=row['date'],
+                                amount=row['amount'],
+                                category=row['category'],
+                                merchant=row['merchant'],
+                                description=row['description']
                             )
-                except Exception as e:
-                    show_error(f"Error creating backup: {str(e)}")
-        
-        # Restore section
-        with st.expander("Restore from Backup", expanded=True):
-            uploaded_backup = st.file_uploader(
-                "Upload Backup File",
-                type=["json"],
-                help="Upload a backup file to restore"
-            )
-            
-            if uploaded_backup:
-                try:
-                    # Save uploaded file temporarily
-                    temp_backup = Path("data") / "temp_restore.json"
-                    with open(temp_backup, "wb") as f:
-                        f.write(uploaded_backup.getvalue())
-                    
-                    # Show warning
-                    st.warning("⚠️ Restoring from backup will replace all existing data!")
-                    
-                    if st.button("Restore Data", use_container_width=True):
-                        with st.spinner("Restoring data..."):
-                            total, restored = restore_from_backup(temp_backup)
-                            st.success(f"✅ Restored {restored} out of {total} records")
-                    
-                    # Clean up
-                    temp_backup.unlink()
-                    
-                except Exception as e:
-                    show_error(f"Error restoring backup: {str(e)}")
+                        st.success("Data imported successfully!")
+                        st.experimental_rerun()
+                else:
+                    st.error("Invalid CSV format. Required columns: date, amount, category, merchant, description")
+            except Exception as e:
+                st.error(f"Error importing data: {str(e)}")
     
-    # Bulk Operations Tab
-    with data_tabs[2]:
-        st.subheader("Bulk Operations")
-        
-        # Get all expenses
-        df = get_expenses_df()
-        
-        if df.empty:
-            st.warning("No expenses found")
-        else:
-            # Add select column
-            df['select'] = False
-            
-            # Show data with selection
-            selection = st.data_editor(
-                df,
-                hide_index=True,
-                column_config={
-                    "select": st.column_config.CheckboxColumn(
-                        "Select",
-                        help="Select expenses for bulk operations",
-                        default=False
-                    )
-                },
-                use_container_width=True
-            )
-            
-            # Get selected rows
-            selected_rows = selection[selection['select']]
-            selected_count = len(selected_rows)
-            
-            if selected_count > 0:
-                st.info(f"Selected {selected_count} expenses")
-                
-                # Bulk operations
-                operation = st.selectbox(
-                    "Choose Operation",
-                    ["Update Category", "Delete Selected"]
-                )
-                
-                if operation == "Update Category":
-                    new_category = st.selectbox(
-                        "New Category",
-                        list(DEFAULT_CATEGORIES.keys())
-                    )
-                    
-                    if st.button("Update Category", use_container_width=True):
-                        with st.spinner("Updating categories..."):
-                            success_count = 0
-                            for _, row in selected_rows.iterrows():
-                                try:
-                                    update_expense(row['id'], {
-                                        'date': row['date'],
-                                        'merchant': row['merchant'],
-                                        'amount': row['amount'],
-                                        'category': new_category,
-                                        'description': row['description'],
-                                        'payment_method': row['payment_method'],
-                                        'receipt_path': row['receipt_path']
-                                    })
-                                    success_count += 1
-                                except Exception as e:
-                                    st.error(f"Error updating expense {row['id']}: {str(e)}")
-                            
-                            st.success(f"✅ Updated {success_count} expenses")
-                            st.rerun()
-                
-                elif operation == "Delete Selected":
-                    if st.button("Delete Selected", use_container_width=True, type="primary"):
-                        with st.spinner("Deleting expenses..."):
-                            success_count = 0
-                            for _, row in selected_rows.iterrows():
-                                try:
-                                    delete_expense(row['id'])
-                                    success_count += 1
-                                except Exception as e:
-                                    st.error(f"Error deleting expense {row['id']}: {str(e)}")
-                            
-                            st.success(f"✅ Deleted {success_count} expenses")
-                            st.rerun()
+    # Database maintenance section
+    st.markdown("---")
+    st.subheader("Database Maintenance")
+    
+    # Backup database
+    if st.button("Create Database Backup"):
+        try:
+            backup_path = create_database_backup()
+            st.success(f"Database backup created successfully at: {backup_path}")
+        except Exception as e:
+            st.error(f"Error creating backup: {str(e)}")
+    
+    # Restore database
+    uploaded_backup = st.file_uploader("Restore from Backup", type=['db'])
+    if uploaded_backup is not None:
+        if st.button("Restore Database"):
+            try:
+                restore_database_from_backup(uploaded_backup)
+                st.success("Database restored successfully!")
+                st.experimental_rerun()
+            except Exception as e:
+                st.error(f"Error restoring database: {str(e)}")
+    
+    # Clear database option with confirmation
+    st.markdown("---")
+    st.subheader("⚠️ Danger Zone")
+    
+    if st.button("Clear All Data"):
+        st.warning("This will permanently delete all expense data. Are you sure?")
+        if st.button("Yes, I'm Sure"):
+            try:
+                clear_database()
+                st.success("Database cleared successfully!")
+                st.experimental_rerun()
+            except Exception as e:
+                st.error(f"Error clearing database: {str(e)}")
 
-# Show success/error messages
+# Display notifications
 if st.session_state.show_success:
     st.success(st.session_state.success_message)
+    st.session_state.show_success = False
+    st.session_state.success_message = ""
+
 if st.session_state.show_error:
     st.error(st.session_state.error_message)
-    # Clear error after showing
     st.session_state.show_error = False
     st.session_state.error_message = ""

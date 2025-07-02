@@ -33,16 +33,42 @@ class ExpenseCategorizer:
             "成城石井": "Groceries",
             "コープ": "Groceries",
         }
+        # Convert store names to lowercase for case-insensitive matching
+        self.store_categories_lower = {k.lower(): v for k, v in self.store_categories.items()}
     
     def _load_categories(self) -> Dict:
         """Load categories configuration from JSON file."""
         try:
             with open(self.categories_file, 'r') as f:
-                return json.load(f)
+                data = json.load(f)
+                # If the file has the old structure, convert it to the new structure
+                if "_metadata" not in data:
+                    # Create metadata structure
+                    metadata = {
+                        "categories": {},
+                        "auto_categorization_rules": {
+                            "min_confidence": 0.6,
+                            "fallback_category": "Other",
+                            "case_sensitive": False
+                        }
+                    }
+                    # Convert each category to the new format
+                    for category, color in data.items():
+                        metadata["categories"][category] = {
+                            "color": color,
+                            "keywords": []
+                        }
+                    return metadata
+                return data["_metadata"]
         except (FileNotFoundError, json.JSONDecodeError):
             # Return default structure if file doesn't exist or is invalid
             return {
-                "categories": {},
+                "categories": {
+                    "Other": {
+                        "color": "#747D8C",
+                        "keywords": []
+                    }
+                },
                 "auto_categorization_rules": {
                     "min_confidence": 0.6,
                     "fallback_category": "Other",
@@ -57,15 +83,18 @@ class ExpenseCategorizer:
         Returns:
             Tuple of (category_name, confidence_score)
         """
+        if not merchant:
+            return self.categories_data["auto_categorization_rules"]["fallback_category"], 0.5
+            
         # Check cache first
         merchant_key = merchant.lower().strip()
         if merchant_key in self.merchant_cache:
             return self.merchant_cache[merchant_key]
         
-        # Check specific store rules first
-        merchant_lower = merchant.lower().strip()
-        for store, category in self.store_categories.items():
-            if store in merchant_lower:
+        # Check specific store rules first - case insensitive
+        for store_name in self.store_categories_lower:
+            if store_name in merchant_key:
+                category = self.store_categories_lower[store_name]
                 self.merchant_cache[merchant_key] = (category, 1.0)
                 return category, 1.0
         
@@ -112,28 +141,30 @@ class ExpenseCategorizer:
         # Combine merchant and description for matching
         text_to_match = f"{merchant} {description}".lower()
 
-        for category, details in self.categories_data["categories"].items():
-            for keyword in details["keywords"]:
+        for category_name, category_data in self.categories_data["categories"].items():
+            for keyword in category_data["keywords"]:
                 if keyword.lower() in text_to_match:
                     score = 1.0  # Exact keyword hit
                     if score > best_score:
-                        best_category = category
+                        best_category = category_name
                         best_score = score
 
         # Always return a result to prevent unpacking errors
-        return best_category or "Other", best_score
+        return (best_category or self.categories_data["auto_categorization_rules"]["fallback_category"], 
+                best_score)
     
     def _fuzzy_match_merchant(self, merchant: str) -> Tuple[str, float]:
         """Fuzzy match merchant name to keywords if exact match fails."""
         best_category = None
         best_score = 0.0
 
-        for category, details in self.categories_data["categories"].items():
-            for keyword in details["keywords"]:
+        for category_name, category_data in self.categories_data["categories"].items():
+            for keyword in category_data["keywords"]:
                 ratio = SequenceMatcher(None, merchant, keyword.lower()).ratio()
                 if ratio > best_score:
                     best_score = ratio
-                    best_category = category
+                    best_category = category_name
         
-        return best_category or "Other", best_score
+        return (best_category or self.categories_data["auto_categorization_rules"]["fallback_category"], 
+                best_score)
         

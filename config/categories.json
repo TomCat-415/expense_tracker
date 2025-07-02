@@ -9,6 +9,64 @@
     "Housing": "#5F27CD",
     "Education": "#00D2D3",
     "Travel": "#C7F464",
-    "Other": "#747D8C"
+    "Mila": "#FF9999",
+    "Other": "#747D8C",
+    "_metadata": {
+        "categories": {
+            "Food & Dining": {
+                "color": "#FF6B6B",
+                "keywords": ["restaurant", "cafe", "coffee", "dining", "food", "takeout"]
+            },
+            "Groceries": {
+                "color": "#4ECDC4",
+                "keywords": ["supermarket", "grocery", "maruetsu", "マルエツ", "イトーヨーカドー", "ライフ", "サミット", "オーケー", "イオン", "成城石井", "コープ"]
+            },
+            "Transportation": {
+                "color": "#45B7D1",
+                "keywords": ["train", "bus", "taxi", "parking", "gas", "toll", "suica", "pasmo"]
+            },
+            "Shopping": {
+                "color": "#96CEB4",
+                "keywords": ["clothing", "electronics", "books", "amazon", "rakuten"]
+            },
+            "Entertainment": {
+                "color": "#FECA57",
+                "keywords": ["movie", "game", "concert", "theater", "netflix", "spotify"]
+            },
+            "Health & Medical": {
+                "color": "#54A0FF",
+                "keywords": ["doctor", "dentist", "pharmacy", "medical", "health", "fitness", "seims", "セイムス", "matsumoto kiyoshi", "マツモトキヨシ", "sundrug", "サンドラッグ", "welcia", "ウエルシア", "tsuruha", "ツルハ", "cocokara fine", "ココカラファイン", "sugi pharmacy", "スギ薬局", "daikoku drug", "ダイコクドラッグ"]
+            },
+            "Utilities": {
+                "color": "#FF9FF3",
+                "keywords": ["electric", "gas", "water", "internet", "phone", "mobile"]
+            },
+            "Housing": {
+                "color": "#5F27CD",
+                "keywords": ["rent", "mortgage", "maintenance", "repair", "furniture"]
+            },
+            "Education": {
+                "color": "#00D2D3",
+                "keywords": ["school", "tuition", "books", "course", "training"]
+            },
+            "Travel": {
+                "color": "#C7F464",
+                "keywords": ["hotel", "flight", "airbnb", "vacation", "travel"]
+            },
+            "Mila": {
+                "color": "#FF9999",
+                "keywords": ["toys", "kids", "baby", "child", "daughter", "mila"]
+            },
+            "Other": {
+                "color": "#747D8C",
+                "keywords": []
+            }
+        },
+        "auto_categorization_rules": {
+            "min_confidence": 0.6,
+            "fallback_category": "Other",
+            "case_sensitive": false
+        }
+    }
 }
   
