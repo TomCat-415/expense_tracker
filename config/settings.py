@@ -9,12 +9,19 @@ import json
 # Load environment variables
 load_dotenv()
 
-# Base paths
-BASE_DIR = Path(__file__).parent.parent
-DATA_DIR = BASE_DIR / "data"
-RECEIPTS_DIR = BASE_DIR / "receipts"
+# Safe base directory (works in Streamlit Cloud too)
+APP_ROOT = Path.cwd()
+
+# Define paths
+DATA_DIR = APP_ROOT / "data"
+RECEIPTS_DIR = APP_ROOT / "receipts"
 PROCESSED_RECEIPTS_DIR = RECEIPTS_DIR / "processed"
 FAILED_RECEIPTS_DIR = RECEIPTS_DIR / "failed"
+CACHE_DIR = DATA_DIR / "cache"
+
+# Ensure directories exist
+for d in [DATA_DIR, RECEIPTS_DIR, PROCESSED_RECEIPTS_DIR, FAILED_RECEIPTS_DIR, CACHE_DIR]:
+    d.mkdir(parents=True, exist_ok=True)
 
 # Database settings
 DATABASE_FILE = DATA_DIR / "expenses.db"
@@ -34,7 +41,7 @@ MAX_RECEIPT_AGE_DAYS = 90  # How long to keep processed receipts
 # App settings
 APP_TITLE = "Family Expense Tracker"
 APP_ICON = "💰"
-DEFAULT_CURRENCY = "USD"
+DEFAULT_CURRENCY = "JPY"
 CURRENCY_SYMBOL = "¥"
 
 # File paths
@@ -81,8 +88,6 @@ STREAMLIT_CONFIG = {
 
 # Cache settings
 CACHE_TIMEOUT = 300  # 5 minutes
-CACHE_DIR = DATA_DIR / "cache"
-CACHE_DIR.mkdir(exist_ok=True)
 
 # Chart settings
 CHART_COLORS = {
@@ -97,10 +102,3 @@ BUDGET_ALERT_THRESHOLDS = {
     "warning": 80,  # Show warning when 80% of budget is used
     "danger": 95    # Show danger alert when 95% of budget is used
 }
-
-# Ensure directories exist
-DATA_DIR.mkdir(exist_ok=True)
-CACHE_DIR.mkdir(exist_ok=True)
-RECEIPTS_DIR.mkdir(exist_ok=True)
-PROCESSED_RECEIPTS_DIR.mkdir(exist_ok=True)
-FAILED_RECEIPTS_DIR.mkdir(exist_ok=True)
