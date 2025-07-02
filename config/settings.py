@@ -99,6 +99,8 @@ BUDGET_ALERT_THRESHOLDS = {
 }
 
 # Ensure directories exist
+DATA_DIR.mkdir(exist_ok=True)
+CACHE_DIR.mkdir(exist_ok=True)
 RECEIPTS_DIR.mkdir(exist_ok=True)
 PROCESSED_RECEIPTS_DIR.mkdir(exist_ok=True)
 FAILED_RECEIPTS_DIR.mkdir(exist_ok=True)
