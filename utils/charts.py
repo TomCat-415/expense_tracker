@@ -44,18 +44,22 @@ def create_category_pie_chart(category_totals: pd.DataFrame, title: str = "Spend
 
 def create_daily_spending_chart(daily_spending: pd.DataFrame, title: str = "Daily Spending Trend") -> go.Figure:
     """Create a line chart showing daily spending trends."""
+    # Calculate y-axis range with 20% padding
+    max_amount = daily_spending['amount'].max()
+    y_max = max_amount * 1.2  # Add 20% padding to the top
+    
     fig = px.line(
         daily_spending,
         x='date',
         y='amount',
         title=title,
         markers=True,
-        line_shape='spline'
+        line_shape='linear'  # Use straight lines between points
     )
     
     fig.update_traces(
-        hovertemplate='<b>%{x}</b><br>Amount: ' + CURRENCY_SYMBOL + '%{y:,.2f}<extra></extra>',
-        line=dict(color='#45B7D1', width=3),
+        hovertemplate='<b>%{x}</b><br>Amount: ' + CURRENCY_SYMBOL + '%{y:,.0f}<extra></extra>',
+        line=dict(color='#45B7D1', width=2),
         marker=dict(size=8, color='#FF6B6B')
     )
     
@@ -63,7 +67,11 @@ def create_daily_spending_chart(daily_spending: pd.DataFrame, title: str = "Dail
         xaxis_title="Date",
         yaxis_title=f"Amount ({CURRENCY_SYMBOL})",
         height=400,
-        hovermode='x unified'
+        hovermode='x unified',
+        yaxis=dict(
+            range=[0, y_max],  # Set y-axis range from 0 to max + padding
+            tickformat=',d'  # Format large numbers with commas
+        )
     )
     
     return fig
@@ -421,18 +429,15 @@ def create_spending_forecast(df: pd.DataFrame, days_ahead: int = 30) -> Tuple[go
     df['date'] = pd.to_datetime(df['date'])
     daily_spending = df.groupby('date')['amount'].sum().reset_index()
     
-    # Calculate moving averages
-    daily_spending['MA7'] = daily_spending['amount'].rolling(window=7).mean()
-    daily_spending['MA30'] = daily_spending['amount'].rolling(window=30).mean()
-
-    # Simple linear regression for trend
-    X = np.arange(len(daily_spending)).reshape(-1, 1)
-    y = daily_spending['amount'].values
+    # Calculate moving averages and baseline metrics
+    daily_spending['MA7'] = daily_spending['amount'].rolling(window=7, min_periods=1).mean()
+    daily_spending['MA30'] = daily_spending['amount'].rolling(window=30, min_periods=1).mean()
     
-    from sklearn.linear_model import LinearRegression
-    model = LinearRegression()
-    model.fit(X, y)
-
+    # Calculate recent average daily spending (last 7 days)
+    recent_daily_avg = daily_spending['amount'].tail(7).mean()
+    if pd.isna(recent_daily_avg) or recent_daily_avg == 0:
+        recent_daily_avg = daily_spending['amount'].mean()  # Fallback to overall average
+    
     # Generate future dates
     last_date = daily_spending['date'].max()
     future_dates = pd.date_range(
@@ -440,9 +445,18 @@ def create_spending_forecast(df: pd.DataFrame, days_ahead: int = 30) -> Tuple[go
         periods=days_ahead
     )
 
-    # Predict future values
-    future_X = np.arange(len(daily_spending), len(daily_spending) + days_ahead).reshape(-1, 1)
-    future_y = model.predict(future_X)
+    # Calculate volatility from recent data
+    volatility = daily_spending['amount'].tail(30).std() * 0.3  # Reduced volatility impact
+    if pd.isna(volatility):
+        volatility = daily_spending['amount'].std() * 0.3
+    
+    # Create forecast array based on recent daily average
+    base_forecast = np.full(days_ahead, recent_daily_avg)
+    
+    # Add controlled randomness
+    np.random.seed(42)  # For consistent results
+    random_factors = np.random.normal(0, volatility, size=days_ahead)
+    future_y = np.maximum(0, base_forecast + random_factors)  # Ensure no negative values
 
     # Create figure
     fig = go.Figure()
@@ -453,7 +467,7 @@ def create_spending_forecast(df: pd.DataFrame, days_ahead: int = 30) -> Tuple[go
         y=daily_spending['amount'],
         name='Daily Spending',
         mode='markers',
-        marker=dict(size=5)
+        marker=dict(size=6, color='#45B7D1')
     ))
 
     # Add moving averages
@@ -461,14 +475,14 @@ def create_spending_forecast(df: pd.DataFrame, days_ahead: int = 30) -> Tuple[go
         x=daily_spending['date'],
         y=daily_spending['MA7'],
         name='7-day Moving Average',
-        line=dict(width=2)
+        line=dict(width=2, color='#FF6B6B')
     ))
 
     fig.add_trace(go.Scatter(
         x=daily_spending['date'],
         y=daily_spending['MA30'],
         name='30-day Moving Average',
-        line=dict(width=2)
+        line=dict(width=2, color='#4ECDC4')
     ))
 
     # Add forecast
@@ -476,14 +490,16 @@ def create_spending_forecast(df: pd.DataFrame, days_ahead: int = 30) -> Tuple[go
         x=future_dates,
         y=future_y,
         name='Forecast',
-        line=dict(dash='dash')
+        line=dict(dash='dash', color='#FFB900')
     ))
 
     # Add confidence interval
-    std_dev = np.std(y)
+    upper_bound = future_y + volatility
+    lower_bound = np.maximum(0, future_y - volatility)
+
     fig.add_trace(go.Scatter(
         x=future_dates,
-        y=future_y + 2*std_dev,
+        y=upper_bound,
         name='Upper Bound',
         line=dict(width=0),
         showlegend=False
@@ -491,23 +507,43 @@ def create_spending_forecast(df: pd.DataFrame, days_ahead: int = 30) -> Tuple[go
 
     fig.add_trace(go.Scatter(
         x=future_dates,
-        y=future_y - 2*std_dev,
+        y=lower_bound,
         name='Lower Bound',
         fill='tonexty',
-        fillcolor='rgba(0,100,80,0.2)',
+        fillcolor='rgba(255, 185, 0, 0.2)',
         line=dict(width=0),
         showlegend=False
     ))
 
+    # Calculate y-axis range with padding
+    y_max = max(
+        daily_spending['amount'].max(),
+        upper_bound.max()
+    ) * 1.2  # Add 20% padding
+
+    # Update layout
     fig.update_layout(
         title="Spending Forecast",
         xaxis_title="Date",
         yaxis_title="Daily Spending (¥)",
-        hovermode='x unified'
+        hovermode='x unified',
+        yaxis=dict(
+            range=[0, y_max],
+            tickformat=',d'  # Format large numbers with commas
+        ),
+        # Improve legend
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
     )
 
-    # Calculate predicted total for the forecast period
-    predicted_total = float(np.sum(future_y))
+    # Calculate predicted total using the base forecast (without volatility)
+    # This gives a more stable prediction
+    predicted_total = float(recent_daily_avg * days_ahead)
 
     return fig, predicted_total
 

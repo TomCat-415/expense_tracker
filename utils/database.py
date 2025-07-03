@@ -6,11 +6,12 @@ import pandas as pd
 import json
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, date
 import hashlib
 from functools import lru_cache
 import logging
 from config.settings import DATABASE_FILE, CACHE_TIMEOUT, DATA_DIR
+import shutil
 
 logger = logging.getLogger(__name__)
 
@@ -41,22 +42,53 @@ def init_db():
     try:
         c = conn.cursor()
         
-        # Create expenses table
-        c.execute('''
-        CREATE TABLE IF NOT EXISTS expenses (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date DATE NOT NULL,
-            merchant TEXT NOT NULL,
-            amount REAL NOT NULL,
-            category TEXT NOT NULL,
-            description TEXT,
-            payment_method TEXT,
-            receipt_path TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            hash TEXT UNIQUE
-        )
-        ''')
+        # Check if expenses table exists
+        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='expenses'")
+        table_exists = c.fetchone() is not None
+        
+        if table_exists:
+            # Check if hash column exists
+            c.execute("PRAGMA table_info(expenses)")
+            columns = [col[1] for col in c.fetchall()]
+            
+            if 'hash' not in columns:
+                # Create a backup before modifying
+                backup_path = DATABASE_FILE.parent / f"expenses_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+                shutil.copy2(DATABASE_FILE, backup_path)
+                
+                # Add hash column
+                c.execute("ALTER TABLE expenses ADD COLUMN hash TEXT")
+                
+                # Update existing rows with hash values
+                c.execute("SELECT id, date, merchant, amount FROM expenses")
+                for row in c.fetchall():
+                    expense_data = {
+                        'date': row[1],
+                        'merchant': row[2],
+                        'amount': row[3]
+                    }
+                    expense_hash = calculate_expense_hash(expense_data)
+                    c.execute("UPDATE expenses SET hash = ? WHERE id = ?", (expense_hash, row[0]))
+                
+                # Now add the UNIQUE constraint
+                c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_expenses_hash ON expenses(hash)")
+        else:
+            # Create expenses table
+            c.execute('''
+            CREATE TABLE IF NOT EXISTS expenses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date DATE NOT NULL,
+                merchant TEXT NOT NULL,
+                amount REAL NOT NULL,
+                category TEXT NOT NULL,
+                description TEXT,
+                payment_method TEXT,
+                receipt_path TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                hash TEXT UNIQUE
+            )
+            ''')
         
         # Create backup_history table
         c.execute('''
@@ -76,7 +108,9 @@ def init_db():
 def calculate_expense_hash(expense_data: Dict) -> str:
     """Calculate a unique hash for an expense to detect duplicates."""
     # Create a string combining key fields
-    hash_string = f"{expense_data['date']}{expense_data['merchant']}{expense_data['amount']}"
+    # Convert date to string if it's a date object
+    date_str = expense_data['date'].strftime('%Y-%m-%d') if isinstance(expense_data['date'], (datetime, date)) else expense_data['date']
+    hash_string = f"{date_str}{expense_data['merchant']}{expense_data['amount']}"
     # Create SHA-256 hash
     return hashlib.sha256(hash_string.encode()).hexdigest()
 
@@ -92,15 +126,25 @@ def is_duplicate_expense(expense_data: Dict) -> bool:
         if c.fetchone():
             return True
         
+        # Convert date to string if it's a date object
+        if isinstance(expense_data['date'], (datetime, date)):
+            date_str = expense_data['date'].strftime('%Y-%m-%d')
+        else:
+            # If it's already a string, try to parse it to validate format
+            try:
+                date_obj = datetime.strptime(expense_data['date'], '%Y-%m-%d')
+                date_str = expense_data['date']
+            except ValueError:
+                raise ValidationError("Invalid date format. Expected YYYY-MM-DD")
+        
         # Check for similar expenses within 24 hours
-        date_obj = datetime.strptime(expense_data['date'], '%Y-%m-%d')
         c.execute('''
         SELECT id FROM expenses 
         WHERE date = ? 
         AND merchant = ? 
         AND ABS(amount - ?) < 0.01
         ''', (
-            date_obj.strftime('%Y-%m-%d'),
+            date_str,
             expense_data['merchant'],
             expense_data['amount']
         ))
@@ -108,6 +152,37 @@ def is_duplicate_expense(expense_data: Dict) -> bool:
         return bool(c.fetchone())
     finally:
         conn.close()
+
+@lru_cache(maxsize=None)
+def get_expenses_df(cache_key: Optional[str] = None) -> pd.DataFrame:
+    """Get all expenses as a pandas DataFrame with caching."""
+    conn = get_db_connection()
+    try:
+        query = '''
+        SELECT 
+            id,
+            date,
+            merchant,
+            amount,
+            category,
+            description,
+            payment_method,
+            receipt_path,
+            created_at,
+            updated_at
+        FROM expenses
+        ORDER BY date DESC
+        '''
+        
+        df = pd.read_sql_query(query, conn)
+        df['date'] = pd.to_datetime(df['date'])
+        return df
+    finally:
+        conn.close()
+
+def invalidate_expenses_cache():
+    """Clear the expenses DataFrame cache."""
+    get_expenses_df.cache_clear()
 
 def add_expense(expense_data: Dict) -> int:
     """Add a new expense to the database with duplicate detection."""
@@ -136,6 +211,8 @@ def add_expense(expense_data: Dict) -> int:
         ))
         
         conn.commit()
+        # Invalidate cache after successful insert
+        invalidate_expenses_cache()
         return c.lastrowid
     except sqlite3.Error as e:
         raise DatabaseError(f"Error adding expense: {str(e)}")
@@ -177,6 +254,8 @@ def update_expense(expense_id: int, expense_data: Dict) -> None:
             raise DatabaseError(f"No expense found with ID {expense_id}")
         
         conn.commit()
+        # Invalidate cache after successful update
+        invalidate_expenses_cache()
     except sqlite3.Error as e:
         raise DatabaseError(f"Error updating expense: {str(e)}")
     finally:
@@ -205,36 +284,12 @@ def delete_expense(expense_id: int) -> None:
             receipt_file = Path(receipt_path)
             if receipt_file.exists():
                 receipt_file.unlink()
+        
+        # Invalidate cache after successful deletion
+        invalidate_expenses_cache()
                 
     except sqlite3.Error as e:
         raise DatabaseError(f"Error deleting expense: {str(e)}")
-    finally:
-        conn.close()
-
-@lru_cache(maxsize=None)
-def get_expenses_df(cache_key: Optional[str] = None) -> pd.DataFrame:
-    """Get all expenses as a pandas DataFrame with caching."""
-    conn = get_db_connection()
-    try:
-        query = '''
-        SELECT 
-            id,
-            date,
-            merchant,
-            amount,
-            category,
-            description,
-            payment_method,
-            receipt_path,
-            created_at,
-            updated_at
-        FROM expenses
-        ORDER BY date DESC
-        '''
-        
-        df = pd.read_sql_query(query, conn)
-        df['date'] = pd.to_datetime(df['date'])
-        return df
     finally:
         conn.close()
 

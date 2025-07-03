@@ -168,9 +168,13 @@ def extract_amount(text: str) -> Tuple[Optional[float], float]:
             logger.info(f"Failed to parse amount '{amount_str}'")
             return None
     
-    # Common patterns for Japanese and international amounts, ordered by priority
+    # Common patterns for amounts, ordered by priority
     amount_patterns = [
-        # Exact Maruetsu credit card total patterns
+        # Amazon-specific patterns
+        (r'Grand Total:?\s*[¥\\]?\s*(\d[\d,.\s]*\d)', 0.98),  # Grand total
+        (r'Total:?\s*[¥\\]?\s*(\d[\d,.\s]*\d)', 0.95),  # Total
+        (r'Item\(s\) Subtotal:?\s*[¥\\]?\s*(\d[\d,.\s]*\d)', 0.9),  # Subtotal
+        # Generic Japanese patterns
         (r'クレ.*?金額\s*[¥\\]?\s*(\d[\d,.\s]*\d)', 0.98),  # Credit amount
         (r'(?:合計|お会計|total)\s*[¥\\]?\s*(\d[\d,.\s]*\d)', 0.95),  # Final total
         (r'(?:税込(?:合計)?|消費税等?込?(?:合計)?)\s*[¥\\]?\s*(\d[\d,.\s]*\d)', 0.9),  # Tax-included total
@@ -198,54 +202,22 @@ def extract_amount(text: str) -> Tuple[Optional[float], float]:
                 if amount is None:
                     continue
                 
-                # Basic validation
-                if amount <= 0 or amount > 1000000:  # Ignore invalid amounts
-                    logger.info(f"Ignoring amount {amount} - out of valid range")
-                    continue
+                # Adjust confidence based on position and context
+                position_confidence = 1.0 - (i / len(lines) * 0.3)  # Later lines get lower confidence
+                final_confidence = min(base_confidence * position_confidence, 1.0)
                 
-                curr_confidence = base_confidence
-                
-                # Increase confidence for amounts near the end of the receipt
-                position_boost = min((i / len(lines)) * 0.2, 0.2)
-                curr_confidence += position_boost
-                
-                # Boost confidence for amounts in typical receipt range
-                if 1000 <= amount <= 100000:
-                    curr_confidence += 0.1
-                
-                # Additional context-based confidence adjustments
-                if re.search(r'クレジット|カード|お客様控え', line, re.IGNORECASE):
-                    curr_confidence += 0.1
-                
-                # Penalize amounts that look like item quantities or unit prices
-                if re.search(r'(?:単|個|点|円/個|\\/?個|x\s*\d+)', line, re.IGNORECASE):
-                    curr_confidence -= 0.3
-                    logger.info(f"Penalizing amount {amount} - looks like item price/quantity")
-                
-                # Penalize amounts that look like phone numbers, card numbers, etc.
-                if re.search(r'(?:電話|TEL|FAX|カード.*番号|ID|No\.?)', line, re.IGNORECASE):
-                    curr_confidence -= 0.5
-                    logger.info(f"Penalizing amount {amount} - looks like phone/card number")
-                
-                # Only accept amounts that appear in the expected format
-                if re.sub(r'\s+', '', amount_str) in re.sub(r'\s+', '', line):
-                    candidates.append((amount, min(curr_confidence, 1.0)))
-                    logger.info(f"Added candidate: amount={amount}, confidence={curr_confidence}")
-                else:
-                    logger.info(f"Skipping amount {amount} - doesn't match expected format in line")
+                candidates.append((amount, final_confidence))
+                logger.info(f"Added candidate: {amount} with confidence {final_confidence}")
     
     if not candidates:
-        logger.info("No valid candidates found")
+        logger.info("No amount candidates found")
         return None, 0.0
     
-    # Sort candidates by confidence
+    # Sort by confidence
     candidates.sort(key=lambda x: x[1], reverse=True)
-    logger.info("All candidates (sorted by confidence):")
-    for amount, conf in candidates:
-        logger.info(f"Amount: {amount}, Confidence: {conf}")
-    
-    # Among candidates with similar confidence (within 0.1), prefer larger amounts
     best_confidence = candidates[0][1]
+    
+    # Get all candidates within 0.1 confidence of the best
     best_candidates = [c for c in candidates if abs(c[1] - best_confidence) <= 0.1]
     
     if best_candidates:
@@ -304,30 +276,43 @@ def extract_merchant(text: str) -> Tuple[Optional[str], float]:
     if not lines:
         return None, 0.0
     
-    # Specific patterns for Maruetsu
-    maruetsu_patterns = [
-        r'マルエツ',
-        r'まるえつ',
-        r'MARUETSU',
-        r'maruetsu',
-        r'マー',  # Common OCR fragment for マルエツ
-        r'のツ'   # Common OCR fragment for マルエツ
+    # Amazon-specific patterns
+    amazon_patterns = [
+        (r'amazon\.co\.jp', 0.95),
+        (r'amazon\.com', 0.95),
+        (r'amazon', 0.9),
+        (r'アマゾン', 0.9),
+        (r'Sold by: Amazon', 0.95)
     ]
     
-    # Check all lines for Maruetsu patterns
+    # Check for Amazon patterns
     for line in lines:
         line = line.strip()
         if not line:
             continue
         
-        # Check for exact Maruetsu matches
-        for pattern in maruetsu_patterns:
+        for pattern, confidence in amazon_patterns:
             if re.search(pattern, line, re.IGNORECASE):
-                return 'maruetsu', 0.95
+                return 'Amazon.co.jp', confidence
+    
+    # Specific patterns for Maruetsu
+    maruetsu_patterns = [
+        (r'マルエツ', 0.95),
+        (r'まるえつ', 0.95),
+        (r'MARUETSU', 0.95),
+        (r'マー', 0.8),  # Common OCR fragment for マルエツ
+        (r'のツ', 0.8)   # Common OCR fragment for マルエツ
+    ]
+    
+    # Check for Maruetsu patterns
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
         
-        # Look for partial matches with higher tolerance
-        if any(p.lower() in line.lower() for p in ['マル', 'まる', 'maru']):
-            return 'maruetsu', 0.8
+        for pattern, confidence in maruetsu_patterns:
+            if re.search(pattern, line, re.IGNORECASE):
+                return 'Maruetsu', confidence
     
     # Fallback: return first non-empty line if it's short enough to be a store name
     for line in lines[:2]:

@@ -17,7 +17,8 @@ from utils.database import (
     import_from_csv,
     export_to_csv,
     create_backup,
-    restore_from_backup
+    restore_from_backup,
+    init_db
 )
 from utils.ocr import extract_text_from_image, process_receipt
 from utils.charts import (
@@ -48,6 +49,9 @@ from config.settings import (
 
 # Configure Streamlit page
 st.set_page_config(**STREAMLIT_CONFIG)
+
+# Initialize database
+init_db()
 
 # Initialize session state variables
 if "show_success" not in st.session_state:
@@ -444,7 +448,7 @@ with tab4:
         # Display expenses with pagination
         st.markdown("### 🧾 Your Expenses")
 
-        total_pages = max(1, -(-len(df) // st.session_state.expenses_per_page))  # Ceiling division, minimum 1 page
+        total_pages = max(1, -(-len(df) // st.session_state.expenses_per_page))
         
         # Only show pagination if there's more than one page
         if total_pages > 1:
@@ -473,46 +477,141 @@ with tab4:
             st.markdown(f"Showing {start_idx + 1}-{end_idx} of {total_count} expense{'s' if total_count != 1 else ''}")
 
         for _, row in page_expenses.iterrows():
-            # Check if this row is marked for confirmation
+            # Check if this row is marked for editing or deletion
+            edit_key = f"edit_{row['id']}"
             confirm_key = f"confirm_{row['id']}"
             delete_key = f"delete_{row['id']}"
             confirm_delete = st.session_state.get(confirm_key, False)
+            is_editing = st.session_state.get(edit_key, False)
 
-            cols = st.columns([4, 1])
+            if not is_editing:
+                cols = st.columns([4, 1, 1])  # Added another column for edit button
 
-            with cols[0]:
-                st.markdown(
-                    f"📅 **{row['date'].strftime('%Y-%m-%d')}** &nbsp;&nbsp; "
-                    f"🏪 **{row['merchant']}** &nbsp;&nbsp; "
-                    f"💴 **¥{row['amount']:,.0f}** &nbsp;&nbsp; "
-                    f"🗂️ {row['category']} &nbsp;&nbsp; "
-                    f"💳 {row['payment_method'] or '—'} &nbsp;&nbsp; "
-                    f"📝 {row['description'] or ''}",
-                    unsafe_allow_html=True
-                )
+                with cols[0]:
+                    st.markdown(
+                        f"📅 **{row['date'].strftime('%Y-%m-%d')}** &nbsp;&nbsp; "
+                        f"🏪 **{row['merchant']}** &nbsp;&nbsp; "
+                        f"💴 **¥{row['amount']:,.0f}** &nbsp;&nbsp; "
+                        f"🗂️ {row['category']} &nbsp;&nbsp; "
+                        f"💳 {row['payment_method'] or '—'} &nbsp;&nbsp; "
+                        f"📝 {row['description'] or ''}",
+                        unsafe_allow_html=True
+                    )
 
-            with cols[1]:
-                if not confirm_delete:
-                    if st.button("🗑️ Delete", key=delete_key):
-                        st.session_state[confirm_key] = True
+                with cols[1]:
+                    if st.button("✏️ Edit", key=f"edit_btn_{row['id']}"):
+                        st.session_state[edit_key] = True
                         st.rerun()
-                else:
-                    st.warning("Are you sure you want to delete this expense?")
 
-                    col_confirm, col_cancel = st.columns([1, 1])
-                    with col_confirm:
-                        if st.button("✅ Yes", key=f"yes_{row['id']}"):
+                with cols[2]:
+                    if not confirm_delete:
+                        if st.button("🗑️ Delete", key=delete_key):
+                            st.session_state[confirm_key] = True
+                            st.rerun()
+                    else:
+                        st.warning("Are you sure you want to delete this expense?")
+
+                        col_confirm, col_cancel = st.columns([1, 1])
+                        with col_confirm:
+                            if st.button("✅ Yes", key=f"yes_{row['id']}"):
+                                try:
+                                    with st.spinner("Deleting expense..."):
+                                        delete_expense(row['id'])
+                                        del st.session_state[confirm_key]
+                                        show_success("Expense deleted successfully!")
+                                        st.rerun()
+                                except DatabaseError as e:
+                                    show_error(f"Error deleting expense: {str(e)}")
+                        with col_cancel:
+                            if st.button("❌ No", key=f"cancel_{row['id']}"):
+                                del st.session_state[confirm_key]
+                                st.rerun()
+            else:
+                # Edit form
+                with st.form(key=f"edit_form_{row['id']}"):
+                    st.markdown("### ✏️ Edit Expense")
+                    
+                    # Date input
+                    edited_date = st.date_input(
+                        "Date",
+                        value=row['date'].date(),
+                        help="Select the date of the expense"
+                    )
+                    
+                    # Amount and merchant in same row
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        edited_amount = st.number_input(
+                            "Amount (¥)",
+                            value=float(row['amount']),
+                            min_value=0.0,
+                            step=100.0,
+                            help="Enter the expense amount"
+                        )
+                    with col2:
+                        edited_merchant = st.text_input(
+                            "Merchant",
+                            value=row['merchant'],
+                            help="Enter the name of the merchant or store"
+                        )
+                    
+                    # Category and payment method in same row
+                    col3, col4 = st.columns(2)
+                    with col3:
+                        edited_category = st.selectbox(
+                            "Category",
+                            options=list(DEFAULT_CATEGORIES.keys()),
+                            index=list(DEFAULT_CATEGORIES.keys()).index(row['category']) if row['category'] in DEFAULT_CATEGORIES else 0,
+                            help="Select the expense category"
+                        )
+                    with col4:
+                        edited_payment_method = st.selectbox(
+                            "Payment Method",
+                            options=["Credit Card", "Debit Card", "Cash", "Digital Wallet", "Other"],
+                            index=["Credit Card", "Debit Card", "Cash", "Digital Wallet", "Other"].index(row['payment_method']) if row['payment_method'] in ["Credit Card", "Debit Card", "Cash", "Digital Wallet", "Other"] else 0,
+                            help="Select the payment method used"
+                        )
+                    
+                    # Optional description
+                    edited_description = st.text_area(
+                        "Description (optional)",
+                        value=row['description'] if row['description'] else "",
+                        help="Add any additional notes about the expense"
+                    )
+                    
+                    # Form buttons
+                    col5, col6 = st.columns(2)
+                    with col5:
+                        if st.form_submit_button("💾 Save Changes"):
                             try:
-                                with st.spinner("Deleting expense..."):
-                                    delete_expense(row['id'])
-                                    del st.session_state[confirm_key]
-                                    show_success("Expense deleted successfully!")
-                                    st.rerun()
-                            except DatabaseError as e:
-                                show_error(f"Error deleting expense: {str(e)}")
-                    with col_cancel:
-                        if st.button("❌ No", key=f"cancel_{row['id']}"):
-                            del st.session_state[confirm_key]
+                                if not edited_merchant.strip():
+                                    raise ValidationError("Merchant name is required")
+                                if edited_amount <= 0:
+                                    raise ValidationError("Amount must be greater than 0")
+                                
+                                # Update expense data
+                                expense_data = {
+                                    "date": edited_date,
+                                    "merchant": edited_merchant.strip(),
+                                    "amount": edited_amount,
+                                    "category": edited_category,
+                                    "description": edited_description.strip(),
+                                    "payment_method": edited_payment_method,
+                                    "receipt_path": row['receipt_path'] if 'receipt_path' in row else None
+                                }
+                                
+                                # Update in database
+                                update_expense(row['id'], expense_data)
+                                del st.session_state[edit_key]
+                                show_success("✅ Expense updated successfully!")
+                                st.rerun()
+                                
+                            except (ValidationError, DatabaseError) as e:
+                                show_error(str(e))
+                    
+                    with col6:
+                        if st.form_submit_button("❌ Cancel"):
+                            del st.session_state[edit_key]
                             st.rerun()
 
         st.markdown("---")
@@ -534,18 +633,38 @@ with tab5:
     if df.empty:
         st.warning("No expenses found. Add some expenses to see analytics.")
     else:
-        # Time period selector
-        time_period = st.slider(
-            "Select Time Period (Days)",
-            min_value=7,
-            max_value=90,
-            value=30,
-            step=1,
-            help="Select the number of days of data to analyze"
-        )
+        # Time period selector with +/- buttons
+        st.markdown("### Select Time Period")
+        col1, col2, col3 = st.columns([0.1, 2.8, 0.1])  # Adjusted ratios to bring buttons closer
+        
+        # Initialize time_period in session state if not exists
+        if 'time_period' not in st.session_state:
+            st.session_state.time_period = 30
+        
+        with col1:
+            st.write("")  # Add some vertical spacing
+            if st.button("➖", help="Decrease by 1 day", key="decrease_days"):
+                st.session_state.time_period = max(7, st.session_state.time_period - 1)
+        
+        with col2:
+            time_period = st.slider(
+                "Days to Analyze",
+                min_value=7,
+                max_value=90,
+                value=st.session_state.time_period,
+                step=1,
+                help="Select the number of days of data to analyze"
+            )
+            if time_period != st.session_state.time_period:
+                st.session_state.time_period = time_period
+        
+        with col3:
+            st.write("")  # Add some vertical spacing
+            if st.button("➕", help="Increase by 1 day", key="increase_days"):
+                st.session_state.time_period = min(90, st.session_state.time_period + 1)
 
         # Filter data based on selected time period
-        cutoff_date = pd.Timestamp.now() - pd.Timedelta(days=time_period)
+        cutoff_date = pd.Timestamp.now() - pd.Timedelta(days=st.session_state.time_period)
         filtered_df = df[df['date'] >= cutoff_date]
         
         # Create tabs for different analytics views
@@ -572,7 +691,7 @@ with tab5:
             
             for category, budget in BUDGET_LIMITS.items():
                 # Adjust budget for the time period
-                days_in_period = min(time_period, 30)  # Cap at 30 days for budget comparison
+                days_in_period = min(st.session_state.time_period, 30)  # Cap at 30 days for budget comparison
                 adjusted_budget = (budget / 30) * days_in_period
                 spent = monthly_spending.get(category, 0)
                 percentage = (spent / adjusted_budget * 100) if adjusted_budget > 0 else 0
@@ -609,22 +728,12 @@ with tab5:
         with analytics_tabs[2]:
             st.subheader("Spending Forecast")
             
-            # Forecast period selector
-            forecast_days = st.slider(
-                "Forecast Period (Days)",
-                min_value=7,
-                max_value=90,
-                value=30,
-                step=7,
-                help="Select the number of days to forecast"
-            )
-            
             # Create forecast using filtered data
-            forecast_fig, predicted_total = create_spending_forecast(filtered_df, forecast_days)
+            forecast_fig, predicted_total = create_spending_forecast(filtered_df, st.session_state.time_period)
             st.plotly_chart(forecast_fig, use_container_width=True, key="spending_forecast")
             
             # Display forecast summary
-            st.info(f"Predicted spending for the next {forecast_days} days: ¥{predicted_total:,.0f}")
+            st.info(f"Predicted spending for the next {st.session_state.time_period} days: ¥{predicted_total:,.0f}")
             
             # Monthly average from filtered data for comparison
             monthly_avg = filtered_df.groupby(
