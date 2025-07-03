@@ -58,43 +58,6 @@ from utils.supabase_client import supabase
 # ---- Streamlit Page Config ----
 st.set_page_config(**STREAMLIT_CONFIG)
 
-# Custom CSS for styling
-st.markdown("""
-<style>
-    /* Main header styling */
-    .main-header {
-        text-align: center;
-        padding: 1rem 0;
-        margin-bottom: 2rem;
-    }
-    .app-title {
-        font-size: 3rem !important;
-        font-weight: bold !important;
-        margin-bottom: 0.5rem !important;
-        color: #1E88E5;
-    }
-    .app-subtitle {
-        font-size: 1.2rem !important;
-        color: #666;
-        font-style: italic;
-        margin-bottom: 2rem !important;
-    }
-    /* Tab styling */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 2px;
-        margin-top: 1rem;
-    }
-    .stTabs [data-baseweb="tab"] {
-        padding: 10px 20px;
-        background-color: #f0f2f6;
-    }
-    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
-        background-color: #1E88E5;
-        color: white;
-    }
-</style>
-""", unsafe_allow_html=True)
-
 # ---- Supabase Auth ----
 
 # 1. Track auth mode and user
@@ -115,12 +78,10 @@ def switch_auth_mode():
     st.session_state.auth_mode = "signup" if st.session_state.auth_mode == "login" else "login"
 
 def login():
-    st.markdown('<div class="main-header">', unsafe_allow_html=True)
-    st.markdown('<h1 class="app-title">🧙‍♂️ Expensei</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="app-subtitle">Let Expensei guide your money journey!</p>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.title("🧙‍♂️ Expensei")
+    st.caption("Let Expensei guide your money journey!")
     
-    st.title("🔐 Login to Expensei")
+    st.header("🔐 Login")
     email = st.text_input("Email")
     password = st.text_input("Password", type="password")
     col1, col2 = st.columns([1, 2])
@@ -143,12 +104,10 @@ def login():
         st.button("Don't have an account? Sign Up", on_click=switch_auth_mode, use_container_width=True)
 
 def signup():
-    st.markdown('<div class="main-header">', unsafe_allow_html=True)
-    st.markdown('<h1 class="app-title">🧙‍♂️ Expensei</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="app-subtitle">Let Expensei guide your money journey!</p>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.title("🧙‍♂️ Expensei")
+    st.caption("Let Expensei guide your money journey!")
     
-    st.title("📝 Sign Up for Expensei")
+    st.header("📝 Sign Up")
     email = st.text_input("Email", key="signup_email")
     password = st.text_input("Password", type="password", key="signup_password")
     col1, col2 = st.columns([1, 2])
@@ -187,11 +146,8 @@ if st.session_state.user is None:
     st.stop()
 
 # 3. User is authenticated: show main app
-# App Header
-st.markdown('<div class="main-header">', unsafe_allow_html=True)
-st.markdown('<h1 class="app-title">🧙‍♂️ Expensei</h1>', unsafe_allow_html=True)
-st.markdown('<p class="app-subtitle">Let Expensei guide your money journey!</p>', unsafe_allow_html=True)
-st.markdown('</div>', unsafe_allow_html=True)
+st.title("🧙‍♂️ Expensei")
+st.caption("Let Expensei guide your money journey!")
 
 # Sidebar
 with st.sidebar:
