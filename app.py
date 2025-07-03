@@ -55,145 +55,196 @@ from config.settings import (
 )
 from utils.supabase_client import supabase
 
-# Initialize Streamlit page
-st.set_page_config(
-    page_title="Expensei",
-    page_icon="🧙‍♂️",
-    layout="wide"
-)
+# ---- Streamlit Page Config ----
+if not st.session_state.get("page_config_set"):
+    st.set_page_config(
+        page_title="Expensei - Your Financial Guide",
+        page_icon="🧙‍♂️",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+    st.session_state.page_config_set = True
 
-# Simple CSS
+# Custom CSS for styling
 st.markdown("""
 <style>
-    .stApp {
-        background-color: white;
-    }
+    /* Main header styling */
     .main-header {
         text-align: center;
-        padding: 2rem;
+        padding: 2rem 0;
+        background: linear-gradient(to right, #1a237e, #1e88e5);
+        color: white;
+        border-radius: 10px;
         margin-bottom: 2rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
-    .auth-container {
-        max-width: 400px;
-        margin: 0 auto;
-        padding: 2rem;
+    .app-title {
+        font-size: 3.5rem !important;
+        font-weight: bold !important;
+        margin-bottom: 0.5rem !important;
+        color: white !important;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+    }
+    .app-subtitle {
+        font-size: 1.4rem !important;
+        color: rgba(255, 255, 255, 0.9) !important;
+        font-style: italic;
+        margin-bottom: 1rem !important;
+    }
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 2px;
+        margin-top: 1rem;
+        background-color: #f8f9fa;
+        padding: 10px;
+        border-radius: 10px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        padding: 10px 20px;
+        border-radius: 5px;
+        font-weight: 500;
+        background-color: #f0f2f6;
+        transition: all 0.3s ease;
+    }
+    .stTabs [data-baseweb="tab"]:hover {
+        background-color: #e3f2fd;
+    }
+    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
+        background-color: #1e88e5;
+        color: white;
+    }
+    /* Button styling */
+    .stButton button {
+        border-radius: 5px;
+        transition: all 0.3s ease;
+    }
+    .stButton button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {
+        background-color: #f8f9fa;
+        padding: 2rem 1rem;
+    }
+    /* Card-like styling for sections */
+    .stMarkdown, .element-container {
+        background-color: white;
+        padding: 1rem;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize session state
-if 'authenticated' not in st.session_state:
-    st.session_state.authenticated = False
-
-# Check for existing session
-if not st.session_state.authenticated:
+# Initialize session state variables
+if "auth_mode" not in st.session_state:
+    st.session_state.auth_mode = "login"
+if "user" not in st.session_state:
+    # Try to get existing session
     try:
         session = supabase.auth.get_session()
         if session and session.user:
             st.session_state.user = session.user
-            st.session_state.authenticated = True
-    except Exception as e:
-        print(f"Session check error: {e}")
+        else:
+            st.session_state.user = None
+    except Exception:
+        st.session_state.user = None
+
+def switch_auth_mode():
+    st.session_state.auth_mode = "signup" if st.session_state.auth_mode == "login" else "login"
 
 def login():
-    st.markdown('<div class="auth-container">', unsafe_allow_html=True)
-    st.title("🧙‍♂️ Expensei")
-    st.write("Your Financial Guide")
-    
-    email = st.text_input("Email")
-    password = st.text_input("Password", type="password")
-    
-    if st.button("Login", use_container_width=True):
-        if not email or not password:
-            st.error("Please enter both email and password.")
-            return
-        try:
-            auth_response = supabase.auth.sign_in_with_password({
-                "email": email,
-                "password": password
-            })
-            if auth_response.user:
-                st.session_state.user = auth_response.user
-                st.session_state.authenticated = True
-                st.success("Logged in successfully!")
-                time.sleep(0.5)
-                st.rerun()
-            else:
-                st.error("Invalid email or password.")
-        except Exception as e:
-            st.error(f"Login failed: {e}")
-    
-    if st.button("Sign Up Instead", use_container_width=True):
-        st.session_state.auth_mode = "signup"
-        st.rerun()
-    
+    # Header
+    st.markdown('<div class="main-header">', unsafe_allow_html=True)
+    st.markdown('<h1 class="app-title">🧙‍♂️ Expensei</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="app-subtitle">Let Expensei guide your money journey!</p>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Login form
+    st.markdown("### 🔐 Welcome back!")
+    with st.container():
+        email = st.text_input("Email")
+        password = st.text_input("Password", type="password")
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            if st.button("Login", use_container_width=True, type="primary"):
+                try:
+                    auth_response = supabase.auth.sign_in_with_password({
+                        "email": email,
+                        "password": password
+                    })
+                    if not auth_response.user:
+                        st.error("Invalid email or password.")
+                        return
+                    st.session_state.user = auth_response.user
+                    st.success("Logged in!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Login failed: {e}")
+        with col2:
+            st.button("Don't have an account? Sign Up", on_click=switch_auth_mode, use_container_width=True)
 
 def signup():
-    st.markdown('<div class="auth-container">', unsafe_allow_html=True)
-    st.title("🧙‍♂️ Expensei")
-    st.write("Create Your Account")
-    
-    email = st.text_input("Email")
-    password = st.text_input("Password", type="password")
-    
-    if st.button("Sign Up", use_container_width=True):
-        if not email or not password:
-            st.error("Please enter both email and password.")
-            return
-        try:
-            auth_response = supabase.auth.sign_up({
-                "email": email,
-                "password": password
-            })
-            if auth_response.user:
-                st.success("Signup successful! Please check your email for confirmation.")
-                time.sleep(0.5)
-                st.session_state.auth_mode = "login"
-                st.rerun()
-            else:
-                st.error("Signup failed. Please try a different email.")
-        except Exception as e:
-            st.error(f"Signup failed: {e}")
-    
-    if st.button("Login Instead", use_container_width=True):
-        st.session_state.auth_mode = "login"
-        st.rerun()
-    
+    # Header
+    st.markdown('<div class="main-header">', unsafe_allow_html=True)
+    st.markdown('<h1 class="app-title">🧙‍♂️ Expensei</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="app-subtitle">Let Expensei guide your money journey!</p>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Signup form
+    st.markdown("### 📝 Create your account")
+    with st.container():
+        email = st.text_input("Email", key="signup_email")
+        password = st.text_input("Password", type="password", key="signup_password")
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            if st.button("Sign Up", use_container_width=True, type="primary"):
+                try:
+                    auth_response = supabase.auth.sign_up({
+                        "email": email,
+                        "password": password
+                    })
+                    if auth_response.user:
+                        st.success("Signup successful! Please check your email for a confirmation link, then log in.")
+                        st.session_state.auth_mode = "login"
+                    else:
+                        st.error("Signup failed. Try a different email.")
+                except Exception as e:
+                    st.error(f"Signup failed: {e}")
+        with col2:
+            st.button("Already have an account? Login", on_click=switch_auth_mode, use_container_width=True)
 
 def logout():
     try:
         supabase.auth.sign_out()
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
-        st.success("Logged out successfully!")
-        time.sleep(0.5)
-        st.rerun()
-    except Exception as e:
-        st.error(f"Logout failed: {e}")
+    except Exception:
+        pass
+    st.session_state.user = None
+    st.success("Logged out.")
+    st.rerun()
 
-# Main app flow
-if not st.session_state.authenticated:
-    if not hasattr(st.session_state, 'auth_mode'):
-        st.session_state.auth_mode = "login"
-    
+# Show login or signup screen until authenticated
+if st.session_state.user is None:
     if st.session_state.auth_mode == "login":
         login()
     else:
         signup()
     st.stop()
 
-# Main app (user is authenticated)
+# User is authenticated: show main app
+# App Header
 st.markdown('<div class="main-header">', unsafe_allow_html=True)
-st.title("🧙‍♂️ Expensei")
-st.write("Let Expensei guide your money journey!")
+st.markdown('<h1 class="app-title">🧙‍♂️ Expensei</h1>', unsafe_allow_html=True)
+st.markdown('<p class="app-subtitle">Let Expensei guide your money journey!</p>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
 # Sidebar
 with st.sidebar:
-    st.write(f"👋 Welcome, {st.session_state.user.email}")
-    st.button("Logout", on_click=logout, use_container_width=True)
+    st.markdown(f"### 👋 Welcome, {st.session_state.user.email}")
+    st.markdown("---")
+    if st.button("🚪 Logout", use_container_width=True):
+        logout()
 
 user_id = st.session_state.user.id
 
