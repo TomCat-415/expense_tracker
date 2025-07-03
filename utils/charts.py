@@ -11,9 +11,12 @@ from datetime import datetime, date, timedelta
 import numpy as np
 import json
 from pathlib import Path
+import logging
 
 from config.settings import DEFAULT_CATEGORIES, CURRENCY_SYMBOL, BUDGET_LIMITS
-from .database import get_expenses_df
+from .database import get_expenses_df, get_user_settings
+
+logger = logging.getLogger(__name__)
 
 
 def create_category_pie_chart(category_totals: pd.DataFrame, title: str = "Spending by Category") -> go.Figure:
@@ -781,9 +784,18 @@ def create_spending_trend(expenses: List[Dict], category_filter: Optional[str] =
     return fig
 
 
-def get_available_categories() -> List[str]:
+def get_available_categories(user_id: str = None) -> List[str]:
     """Get list of available expense categories."""
+    if user_id is not None:
+        try:
+            settings = get_user_settings(user_id)
+            categories = settings.get("custom_categories", DEFAULT_CATEGORIES)
+            return [cat for cat in categories.keys() if cat != "_metadata"]
+        except Exception as e:
+            logger.error(f"Error getting categories: {e}")
+    
+    # Fallback to default categories
     with open(Path(__file__).parent.parent / 'config' / 'categories.json', 'r') as f:
         categories = json.load(f)
-    return [cat for cat in categories.keys() if cat != '_metadata']
+    return [cat for cat in categories.keys() if cat != "_metadata"]
     
