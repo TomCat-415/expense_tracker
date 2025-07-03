@@ -168,8 +168,8 @@ if st.session_state.user is None:
     st.stop()
 
 # 3. User is authenticated: show main app
-st.title("🧙‍♂️ Expensei")
-st.caption("Let Expensei guide your money journey!")
+st.markdown("<h1 style='font-size: 3em;'>🧙‍♂️ Expensei</h1>", unsafe_allow_html=True)
+st.markdown("<h2 style='font-size: 1.5em; color: #666;'>Let Expensei guide your money journey!</h2>", unsafe_allow_html=True)
 
 # Sidebar
 with st.sidebar:
@@ -681,50 +681,47 @@ with tab5:
     if df.empty:
         st.info("No expenses to analyze. Add some expenses to see enhanced analytics!")
     else:
-        # Create sub-tabs for different analytics sections
-        analytics_tab1, analytics_tab2, analytics_tab3, analytics_tab4 = st.tabs([
-            "🎯 Budget Analysis",
-            "📈 Forecasting",
-            "📅 Weekly Insights",
-            "🗂️ Category Analysis"
+        # Budget Tracking
+        st.subheader("🎯 Budget Tracking")
+        st.plotly_chart(create_budget_tracking_chart(df), use_container_width=True)
+        
+        # Create sub-tabs for different analytics views
+        st.markdown("### 📈 Detailed Analysis")
+        analysis_tabs = st.tabs([
+            "💰 Budget Allocation",
+            "🔮 Forecast",
+            "📅 Weekly Analysis",
+            "🗂️ Categories"
         ])
         
-        # Budget Analysis Tab
-        with analytics_tab1:
-            st.subheader("🎯 Budget Tracking")
-            st.plotly_chart(create_budget_tracking_chart(df), use_container_width=True)
+        # Budget Allocation Tab
+        with analysis_tabs[0]:
             st.plotly_chart(create_category_budget_allocation(df), use_container_width=True)
+            st.plotly_chart(create_payment_method_chart(df), use_container_width=True)
         
-        # Forecasting Tab
-        with analytics_tab2:
-            st.subheader("📈 Spending Forecast")
+        # Forecast Tab
+        with analysis_tabs[1]:
             forecast_days = st.slider("Forecast Days", min_value=7, max_value=90, value=30)
             forecast_chart, predicted_total = create_spending_forecast(df, days_ahead=forecast_days)
             st.plotly_chart(forecast_chart, use_container_width=True)
             st.info(f"Predicted spending for next {forecast_days} days: ¥{predicted_total:,.0f}")
         
         # Weekly Analysis Tab
-        with analytics_tab3:
-            st.subheader("📅 Weekly Analysis")
+        with analysis_tabs[2]:
             col1, col2 = st.columns(2)
             with col1:
                 st.plotly_chart(create_weekly_comparison_chart(df), use_container_width=True)
             with col2:
                 st.plotly_chart(create_weekly_spending_heatmap(df), use_container_width=True)
         
-        # Category Analysis Tab
-        with analytics_tab4:
-            st.subheader("📊 Category Analysis")
-            col1, col2 = st.columns(2)
-            with col1:
-                st.plotly_chart(create_payment_method_chart(df), use_container_width=True)
-            with col2:
-                categories = ["All"] + list(DEFAULT_CATEGORIES.keys())
-                selected_category = st.selectbox("Select Category", categories)
-                if selected_category == "All":
-                    st.plotly_chart(create_category_trend_chart(df), use_container_width=True)
-                else:
-                    st.plotly_chart(create_spending_trend(df.to_dict('records'), category_filter=selected_category), use_container_width=True)
+        # Categories Tab
+        with analysis_tabs[3]:
+            categories = ["All"] + list(DEFAULT_CATEGORIES.keys())
+            selected_category = st.selectbox("Select Category", categories)
+            if selected_category == "All":
+                st.plotly_chart(create_category_trend_chart(df), use_container_width=True)
+            else:
+                st.plotly_chart(create_spending_trend(df.to_dict('records'), category_filter=selected_category), use_container_width=True)
 
 # ---------- Data Management ----------
 with tab6:
