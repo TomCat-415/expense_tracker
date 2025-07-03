@@ -55,115 +55,152 @@ from config.settings import (
 )
 from utils.supabase_client import supabase
 
-# ---- Streamlit Page Config ----
-if not st.session_state.get("page_config_set"):
-    st.set_page_config(
-        page_title="Expensei - Your Financial Guide",
-        page_icon="🧙‍♂️",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
-    st.session_state.page_config_set = True
+# Configure Streamlit to handle authentication
+st.set_page_config(
+    page_title="Expensei - Your Financial Guide",
+    page_icon="🧙‍♂️",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# Custom CSS for styling
+# Initialize session state for authentication
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+# Custom CSS with !important flags to ensure styles are applied
 st.markdown("""
 <style>
-    /* Main header styling */
-    .main-header {
-        text-align: center;
-        padding: 2rem 0;
-        background: linear-gradient(to right, #1a237e, #1e88e5);
-        color: white;
-        border-radius: 10px;
-        margin-bottom: 2rem;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    /* Reset default Streamlit styles */
+    .stApp {
+        background-color: #f8f9fa !important;
     }
+    
+    /* Main header styling */
+    div.main-header {
+        text-align: center !important;
+        padding: 2rem 0 !important;
+        background: linear-gradient(135deg, #1a237e 0%, #1e88e5 100%) !important;
+        color: white !important;
+        border-radius: 10px !important;
+        margin: 1rem 0 2rem 0 !important;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+    }
+    
     .app-title {
         font-size: 3.5rem !important;
-        font-weight: bold !important;
+        font-weight: 700 !important;
         margin-bottom: 0.5rem !important;
         color: white !important;
-        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2) !important;
     }
+    
     .app-subtitle {
         font-size: 1.4rem !important;
         color: rgba(255, 255, 255, 0.9) !important;
-        font-style: italic;
+        font-style: italic !important;
         margin-bottom: 1rem !important;
     }
+    
+    /* Container styling */
+    div.block-container {
+        padding: 2rem !important;
+        max-width: 1200px !important;
+    }
+    
     /* Tab styling */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 2px;
-        margin-top: 1rem;
-        background-color: #f8f9fa;
-        padding: 10px;
-        border-radius: 10px;
+        gap: 2px !important;
+        margin: 1rem 0 !important;
+        background-color: #f8f9fa !important;
+        padding: 10px !important;
+        border-radius: 10px !important;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05) !important;
     }
+    
     .stTabs [data-baseweb="tab"] {
-        padding: 10px 20px;
-        border-radius: 5px;
-        font-weight: 500;
-        background-color: #f0f2f6;
-        transition: all 0.3s ease;
+        padding: 10px 20px !important;
+        border-radius: 5px !important;
+        font-weight: 500 !important;
+        background-color: #f0f2f6 !important;
+        transition: all 0.3s ease !important;
     }
+    
     .stTabs [data-baseweb="tab"]:hover {
-        background-color: #e3f2fd;
+        background-color: #e3f2fd !important;
+        transform: translateY(-1px) !important;
     }
+    
     .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
-        background-color: #1e88e5;
-        color: white;
+        background-color: #1e88e5 !important;
+        color: white !important;
     }
+    
     /* Button styling */
-    .stButton button {
-        border-radius: 5px;
-        transition: all 0.3s ease;
+    .stButton > button {
+        border-radius: 5px !important;
+        transition: all 0.3s ease !important;
+        font-weight: 500 !important;
+        padding: 0.5rem 1rem !important;
     }
-    .stButton button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    
+    .stButton > button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
     }
+    
     /* Sidebar styling */
-    [data-testid="stSidebar"] {
-        background-color: #f8f9fa;
-        padding: 2rem 1rem;
+    section[data-testid="stSidebar"] {
+        background-color: #1a237e !important;
+        padding: 2rem 1rem !important;
+        color: white !important;
     }
-    /* Card-like styling for sections */
-    .stMarkdown, .element-container {
-        background-color: white;
-        padding: 1rem;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    
+    section[data-testid="stSidebar"] .stButton > button {
+        width: 100% !important;
+        margin-top: 1rem !important;
+        background-color: rgba(255, 255, 255, 0.1) !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        color: white !important;
+    }
+    
+    section[data-testid="stSidebar"] .stButton > button:hover {
+        background-color: rgba(255, 255, 255, 0.2) !important;
+    }
+    
+    /* Card styling */
+    div.element-container div.stMarkdown,
+    div.element-container div {
+        background-color: white !important;
+        padding: 1.5rem !important;
+        border-radius: 10px !important;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05) !important;
+        margin-bottom: 1rem !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize session state variables
-if "auth_mode" not in st.session_state:
-    st.session_state.auth_mode = "login"
-if "user" not in st.session_state:
-    # Try to get existing session
+# Check for existing session
+if not st.session_state.authenticated:
     try:
         session = supabase.auth.get_session()
         if session and session.user:
             st.session_state.user = session.user
-        else:
-            st.session_state.user = None
+            st.session_state.authenticated = True
     except Exception:
         st.session_state.user = None
+        st.session_state.authenticated = False
 
 def switch_auth_mode():
     st.session_state.auth_mode = "signup" if st.session_state.auth_mode == "login" else "login"
 
 def login():
-    # Header
     st.markdown('<div class="main-header">', unsafe_allow_html=True)
     st.markdown('<h1 class="app-title">🧙‍♂️ Expensei</h1>', unsafe_allow_html=True)
     st.markdown('<p class="app-subtitle">Let Expensei guide your money journey!</p>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # Login form
-    st.markdown("### 🔐 Welcome back!")
     with st.container():
+        st.markdown("### 🔐 Welcome back!")
         email = st.text_input("Email")
         password = st.text_input("Password", type="password")
         col1, col2 = st.columns([1, 2])
@@ -174,27 +211,26 @@ def login():
                         "email": email,
                         "password": password
                     })
-                    if not auth_response.user:
+                    if auth_response.user:
+                        st.session_state.user = auth_response.user
+                        st.session_state.authenticated = True
+                        st.success("Logged in successfully!")
+                        st.rerun()
+                    else:
                         st.error("Invalid email or password.")
-                        return
-                    st.session_state.user = auth_response.user
-                    st.success("Logged in!")
-                    st.rerun()
                 except Exception as e:
                     st.error(f"Login failed: {e}")
         with col2:
             st.button("Don't have an account? Sign Up", on_click=switch_auth_mode, use_container_width=True)
 
 def signup():
-    # Header
     st.markdown('<div class="main-header">', unsafe_allow_html=True)
     st.markdown('<h1 class="app-title">🧙‍♂️ Expensei</h1>', unsafe_allow_html=True)
     st.markdown('<p class="app-subtitle">Let Expensei guide your money journey!</p>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # Signup form
-    st.markdown("### 📝 Create your account")
     with st.container():
+        st.markdown("### 📝 Create your account")
         email = st.text_input("Email", key="signup_email")
         password = st.text_input("Password", type="password", key="signup_password")
         col1, col2 = st.columns([1, 2])
@@ -206,10 +242,11 @@ def signup():
                         "password": password
                     })
                     if auth_response.user:
-                        st.success("Signup successful! Please check your email for a confirmation link, then log in.")
+                        st.success("Signup successful! Please check your email for confirmation.")
                         st.session_state.auth_mode = "login"
+                        st.rerun()
                     else:
-                        st.error("Signup failed. Try a different email.")
+                        st.error("Signup failed. Please try a different email.")
                 except Exception as e:
                     st.error(f"Signup failed: {e}")
         with col2:
@@ -218,22 +255,25 @@ def signup():
 def logout():
     try:
         supabase.auth.sign_out()
-    except Exception:
-        pass
-    st.session_state.user = None
-    st.success("Logged out.")
-    st.rerun()
+        st.session_state.clear()
+        st.session_state.authenticated = False
+        st.success("Logged out successfully!")
+        st.rerun()
+    except Exception as e:
+        st.error(f"Logout failed: {e}")
 
-# Show login or signup screen until authenticated
-if st.session_state.user is None:
+# Show login/signup or main app
+if not st.session_state.authenticated:
+    if "auth_mode" not in st.session_state:
+        st.session_state.auth_mode = "login"
+    
     if st.session_state.auth_mode == "login":
         login()
     else:
         signup()
     st.stop()
 
-# User is authenticated: show main app
-# App Header
+# Main app (user is authenticated)
 st.markdown('<div class="main-header">', unsafe_allow_html=True)
 st.markdown('<h1 class="app-title">🧙‍♂️ Expensei</h1>', unsafe_allow_html=True)
 st.markdown('<p class="app-subtitle">Let Expensei guide your money journey!</p>', unsafe_allow_html=True)
