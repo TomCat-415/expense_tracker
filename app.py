@@ -70,27 +70,104 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS with !important flags to ensure styles are applied
+# Custom CSS with !important flags
 st.markdown("""
 <style>
-    /* Reset default Streamlit styles */
+    /* Reset and base styles */
     .stApp {
         background-color: #f8f9fa !important;
     }
     
-    /* Main header styling */
-    div.main-header {
+    .block-container {
+        padding-top: 2rem !important;
+        max-width: 1000px !important;
+    }
+    
+    /* Auth container */
+    .auth-container {
+        max-width: 400px !important;
+        margin: 2rem auto !important;
+        padding: 2rem !important;
+        background: white !important;
+        border-radius: 10px !important;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+    }
+    
+    /* Header styling */
+    .auth-header {
         text-align: center !important;
-        padding: 2rem 0 !important;
+        margin-bottom: 2rem !important;
+    }
+    
+    .auth-header h1 {
+        font-size: 2.5rem !important;
+        font-weight: 700 !important;
+        color: #1a237e !important;
+        margin-bottom: 0.5rem !important;
+    }
+    
+    .auth-header p {
+        color: #666 !important;
+        font-size: 1.1rem !important;
+    }
+    
+    /* Form styling */
+    .stTextInput > div > div {
+        background-color: white !important;
+        border: 1px solid #e0e0e0 !important;
+        border-radius: 5px !important;
+        padding: 0.5rem !important;
+    }
+    
+    .stTextInput > div > div:focus-within {
+        border-color: #1e88e5 !important;
+        box-shadow: 0 0 0 1px #1e88e5 !important;
+    }
+    
+    /* Button styling */
+    .stButton > button {
+        width: 100% !important;
+        padding: 0.6rem 1rem !important;
+        border-radius: 5px !important;
+        font-weight: 500 !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    .stButton > button[kind="primary"] {
+        background-color: #1e88e5 !important;
+        color: white !important;
+        border: none !important;
+    }
+    
+    .stButton > button[kind="primary"]:hover {
+        background-color: #1976d2 !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+    }
+    
+    .stButton > button:not([kind="primary"]) {
+        background-color: transparent !important;
+        color: #1e88e5 !important;
+        border: 1px solid #1e88e5 !important;
+    }
+    
+    .stButton > button:not([kind="primary"]):hover {
+        background-color: rgba(30, 136, 229, 0.1) !important;
+    }
+    
+    /* Main app header */
+    .main-header {
+        text-align: center !important;
+        padding: 2rem !important;
         background: linear-gradient(135deg, #1a237e 0%, #1e88e5 100%) !important;
         color: white !important;
         border-radius: 10px !important;
-        margin: 1rem 0 2rem 0 !important;
+        margin-bottom: 2rem !important;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
     }
     
     .app-title {
-        font-size: 3.5rem !important;
+        font-size: 3rem !important;
         font-weight: 700 !important;
         margin-bottom: 0.5rem !important;
         color: white !important;
@@ -98,86 +175,16 @@ st.markdown("""
     }
     
     .app-subtitle {
-        font-size: 1.4rem !important;
+        font-size: 1.2rem !important;
         color: rgba(255, 255, 255, 0.9) !important;
         font-style: italic !important;
-        margin-bottom: 1rem !important;
     }
     
-    /* Container styling */
-    div.block-container {
-        padding: 2rem !important;
-        max-width: 1200px !important;
-    }
-    
-    /* Tab styling */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 2px !important;
+    /* Error/Success messages */
+    .stAlert {
+        padding: 0.75rem !important;
+        border-radius: 5px !important;
         margin: 1rem 0 !important;
-        background-color: #f8f9fa !important;
-        padding: 10px !important;
-        border-radius: 10px !important;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05) !important;
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        padding: 10px 20px !important;
-        border-radius: 5px !important;
-        font-weight: 500 !important;
-        background-color: #f0f2f6 !important;
-        transition: all 0.3s ease !important;
-    }
-    
-    .stTabs [data-baseweb="tab"]:hover {
-        background-color: #e3f2fd !important;
-        transform: translateY(-1px) !important;
-    }
-    
-    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
-        background-color: #1e88e5 !important;
-        color: white !important;
-    }
-    
-    /* Button styling */
-    .stButton > button {
-        border-radius: 5px !important;
-        transition: all 0.3s ease !important;
-        font-weight: 500 !important;
-        padding: 0.5rem 1rem !important;
-    }
-    
-    .stButton > button:hover {
-        transform: translateY(-2px) !important;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
-    }
-    
-    /* Sidebar styling */
-    section[data-testid="stSidebar"] {
-        background-color: #1a237e !important;
-        padding: 2rem 1rem !important;
-        color: white !important;
-    }
-    
-    section[data-testid="stSidebar"] .stButton > button {
-        width: 100% !important;
-        margin-top: 1rem !important;
-        background-color: rgba(255, 255, 255, 0.1) !important;
-        border: 1px solid rgba(255, 255, 255, 0.2) !important;
-        color: white !important;
-    }
-    
-    section[data-testid="stSidebar"] .stButton > button:hover {
-        background-color: rgba(255, 255, 255, 0.2) !important;
-    }
-    
-    /* Card styling */
-    div.element-container div.stMarkdown,
-    div.element-container div {
-        background-color: white !important;
-        padding: 1.5rem !important;
-        border-radius: 10px !important;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05) !important;
-        margin-bottom: 1rem !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -199,71 +206,73 @@ def switch_auth_mode():
     st.rerun()
 
 def login():
-    st.markdown('<div class="main-header">', unsafe_allow_html=True)
-    st.markdown('<h1 class="app-title">🧙‍♂️ Expensei</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="app-subtitle">Let Expensei guide your money journey!</p>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("""
+        <div class="auth-container">
+            <div class="auth-header">
+                <h1>🧙‍♂️ Expensei</h1>
+                <p>Your Financial Guide</p>
+            </div>
+    """, unsafe_allow_html=True)
     
-    with st.container():
-        st.markdown("### 🔐 Welcome back!")
-        email = st.text_input("Email", key="login_email")
-        password = st.text_input("Password", type="password", key="login_password")
-        col1, col2 = st.columns([1, 2])
-        with col1:
-            if st.button("Login", use_container_width=True, type="primary", key="login_button"):
-                if not email or not password:
-                    st.error("Please enter both email and password.")
-                    return
-                try:
-                    auth_response = supabase.auth.sign_in_with_password({
-                        "email": email,
-                        "password": password
-                    })
-                    if auth_response.user:
-                        st.session_state.user = auth_response.user
-                        st.session_state.authenticated = True
-                        st.success("Logged in successfully!")
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error("Invalid email or password.")
-                except Exception as e:
-                    st.error(f"Login failed: {e}")
-        with col2:
-            st.button("Don't have an account? Sign Up", on_click=switch_auth_mode, use_container_width=True, key="to_signup_button")
+    email = st.text_input("Email", key="login_email")
+    password = st.text_input("Password", type="password", key="login_password")
+    
+    if st.button("Login", use_container_width=True, type="primary", key="login_button"):
+        if not email or not password:
+            st.error("Please enter both email and password.")
+            return
+        try:
+            auth_response = supabase.auth.sign_in_with_password({
+                "email": email,
+                "password": password
+            })
+            if auth_response.user:
+                st.session_state.user = auth_response.user
+                st.session_state.authenticated = True
+                st.success("Logged in successfully!")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error("Invalid email or password.")
+        except Exception as e:
+            st.error(f"Login failed: {e}")
+    
+    st.button("Don't have an account? Sign Up", on_click=switch_auth_mode, use_container_width=True, key="to_signup_button")
+    st.markdown("</div>", unsafe_allow_html=True)
 
 def signup():
-    st.markdown('<div class="main-header">', unsafe_allow_html=True)
-    st.markdown('<h1 class="app-title">🧙‍♂️ Expensei</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="app-subtitle">Let Expensei guide your money journey!</p>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("""
+        <div class="auth-container">
+            <div class="auth-header">
+                <h1>🧙‍♂️ Expensei</h1>
+                <p>Create Your Account</p>
+            </div>
+    """, unsafe_allow_html=True)
     
-    with st.container():
-        st.markdown("### 📝 Create your account")
-        email = st.text_input("Email", key="signup_email")
-        password = st.text_input("Password", type="password", key="signup_password")
-        col1, col2 = st.columns([1, 2])
-        with col1:
-            if st.button("Sign Up", use_container_width=True, type="primary", key="signup_button"):
-                if not email or not password:
-                    st.error("Please enter both email and password.")
-                    return
-                try:
-                    auth_response = supabase.auth.sign_up({
-                        "email": email,
-                        "password": password
-                    })
-                    if auth_response.user:
-                        st.success("Signup successful! Please check your email for confirmation.")
-                        time.sleep(1)
-                        st.session_state.auth_mode = "login"
-                        st.rerun()
-                    else:
-                        st.error("Signup failed. Please try a different email.")
-                except Exception as e:
-                    st.error(f"Signup failed: {e}")
-        with col2:
-            st.button("Already have an account? Login", on_click=switch_auth_mode, use_container_width=True, key="to_login_button")
+    email = st.text_input("Email", key="signup_email")
+    password = st.text_input("Password", type="password", key="signup_password")
+    
+    if st.button("Sign Up", use_container_width=True, type="primary", key="signup_button"):
+        if not email or not password:
+            st.error("Please enter both email and password.")
+            return
+        try:
+            auth_response = supabase.auth.sign_up({
+                "email": email,
+                "password": password
+            })
+            if auth_response.user:
+                st.success("Signup successful! Please check your email for confirmation.")
+                time.sleep(1)
+                st.session_state.auth_mode = "login"
+                st.rerun()
+            else:
+                st.error("Signup failed. Please try a different email.")
+        except Exception as e:
+            st.error(f"Signup failed: {e}")
+    
+    st.button("Already have an account? Login", on_click=switch_auth_mode, use_container_width=True, key="to_login_button")
+    st.markdown("</div>", unsafe_allow_html=True)
 
 def logout():
     try:
