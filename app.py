@@ -58,6 +58,16 @@ from utils.supabase_client import supabase
 # ---- Streamlit Page Config ----
 st.set_page_config(**STREAMLIT_CONFIG)
 
+# Add subtle hover effect for tabs
+st.markdown("""
+<style>
+    .stTabs [data-baseweb="tab"]:hover {
+        border-bottom: 2px solid #ff4b4b;
+        transition: all 0.3s ease;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # ---- Supabase Auth ----
 
 # 1. Track auth mode and user
@@ -70,7 +80,12 @@ if "user" not in st.session_state:
         if session and session.user:
             st.session_state.user = session.user
         else:
-            st.session_state.user = None
+            # Try to refresh the session
+            response = supabase.auth.refresh_session()
+            if response and response.user:
+                st.session_state.user = response.user
+            else:
+                st.session_state.user = None
     except Exception:
         st.session_state.user = None
 
@@ -84,6 +99,7 @@ def login():
     st.header("🔐 Login")
     email = st.text_input("Email")
     password = st.text_input("Password", type="password")
+    remember_me = st.checkbox("Remember me", value=True)
     col1, col2 = st.columns([1, 2])
     with col1:
         if st.button("Login", use_container_width=True):
@@ -96,6 +112,10 @@ def login():
                     st.error("Invalid email or password.")
                     return
                 st.session_state.user = auth_response.user
+                
+                # If remember me is checked, we don't need to do anything special
+                # as Supabase will handle the refresh token automatically
+                
                 st.success("Logged in!")
                 st.rerun()
             except Exception as e:
@@ -131,9 +151,11 @@ def signup():
 def logout():
     try:
         supabase.auth.sign_out()
+        # Clear any stored session data
+        if 'user' in st.session_state:
+            del st.session_state.user
     except Exception:
         pass
-    st.session_state.user = None
     st.success("Logged out.")
     st.rerun()
 
@@ -659,41 +681,50 @@ with tab5:
     if df.empty:
         st.info("No expenses to analyze. Add some expenses to see enhanced analytics!")
     else:
-        # Budget Tracking
-        st.subheader("🎯 Budget Tracking")
-        st.plotly_chart(create_budget_tracking_chart(df), use_container_width=True)
+        # Create sub-tabs for different analytics sections
+        analytics_tab1, analytics_tab2, analytics_tab3, analytics_tab4 = st.tabs([
+            "🎯 Budget Analysis",
+            "📈 Forecasting",
+            "📅 Weekly Insights",
+            "🗂️ Category Analysis"
+        ])
         
-        # Spending Forecast
-        st.subheader("📈 Spending Forecast")
-        forecast_days = st.slider("Forecast Days", min_value=7, max_value=90, value=30)
-        forecast_chart, predicted_total = create_spending_forecast(df, days_ahead=forecast_days)
-        st.plotly_chart(forecast_chart, use_container_width=True)
-        st.info(f"Predicted spending for next {forecast_days} days: ¥{predicted_total:,.0f}")
-        
-        # Weekly Analysis
-        st.subheader("📅 Weekly Analysis")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.plotly_chart(create_weekly_comparison_chart(df), use_container_width=True)
-        with col2:
-            st.plotly_chart(create_weekly_spending_heatmap(df), use_container_width=True)
-        
-        # Category Analysis
-        st.subheader("📊 Category Analysis")
-        col3, col4 = st.columns(2)
-        with col3:
+        # Budget Analysis Tab
+        with analytics_tab1:
+            st.subheader("🎯 Budget Tracking")
+            st.plotly_chart(create_budget_tracking_chart(df), use_container_width=True)
             st.plotly_chart(create_category_budget_allocation(df), use_container_width=True)
-        with col4:
-            st.plotly_chart(create_payment_method_chart(df), use_container_width=True)
         
-        # Trend Analysis
-        st.subheader("📈 Trend Analysis")
-        categories = ["All"] + list(DEFAULT_CATEGORIES.keys())
-        selected_category = st.selectbox("Select Category", categories)
-        if selected_category == "All":
-            st.plotly_chart(create_category_trend_chart(df), use_container_width=True)
-        else:
-            st.plotly_chart(create_spending_trend(df.to_dict('records'), category_filter=selected_category), use_container_width=True)
+        # Forecasting Tab
+        with analytics_tab2:
+            st.subheader("📈 Spending Forecast")
+            forecast_days = st.slider("Forecast Days", min_value=7, max_value=90, value=30)
+            forecast_chart, predicted_total = create_spending_forecast(df, days_ahead=forecast_days)
+            st.plotly_chart(forecast_chart, use_container_width=True)
+            st.info(f"Predicted spending for next {forecast_days} days: ¥{predicted_total:,.0f}")
+        
+        # Weekly Analysis Tab
+        with analytics_tab3:
+            st.subheader("📅 Weekly Analysis")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.plotly_chart(create_weekly_comparison_chart(df), use_container_width=True)
+            with col2:
+                st.plotly_chart(create_weekly_spending_heatmap(df), use_container_width=True)
+        
+        # Category Analysis Tab
+        with analytics_tab4:
+            st.subheader("📊 Category Analysis")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.plotly_chart(create_payment_method_chart(df), use_container_width=True)
+            with col2:
+                categories = ["All"] + list(DEFAULT_CATEGORIES.keys())
+                selected_category = st.selectbox("Select Category", categories)
+                if selected_category == "All":
+                    st.plotly_chart(create_category_trend_chart(df), use_container_width=True)
+                else:
+                    st.plotly_chart(create_spending_trend(df.to_dict('records'), category_filter=selected_category), use_container_width=True)
 
 # ---------- Data Management ----------
 with tab6:
