@@ -58,6 +58,28 @@ from utils.supabase_client import supabase
 # ---- Streamlit Page Config ----
 st.set_page_config(**STREAMLIT_CONFIG)
 
+# Add custom CSS to match tab styling with theme
+st.markdown("""
+<style>
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 2px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre-wrap;
+        background-color: transparent;
+        border-radius: 4px;
+        color: #808495;
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: rgba(151, 166, 195, 0.15);
+        color: rgb(255, 255, 255);
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # ---- Supabase Auth ----
 
 # 1. Track auth mode and user
