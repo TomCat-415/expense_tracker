@@ -55,17 +55,20 @@ from config.settings import (
 )
 from utils.supabase_client import supabase
 
-# Configure Streamlit to handle authentication
+# Initialize Streamlit state
+if 'initialized' not in st.session_state:
+    st.session_state.initialized = True
+    st.session_state.authenticated = False
+    st.session_state.auth_mode = "login"
+    st.session_state.user = None
+
+# Configure Streamlit page
 st.set_page_config(
     page_title="Expensei - Your Financial Guide",
     page_icon="🧙‍♂️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-# Initialize session state for authentication
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
 
 # Custom CSS with !important flags to ensure styles are applied
 st.markdown("""
@@ -179,19 +182,21 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Check for existing session
+# Check for existing session before any UI rendering
 if not st.session_state.authenticated:
     try:
         session = supabase.auth.get_session()
         if session and session.user:
             st.session_state.user = session.user
             st.session_state.authenticated = True
-    except Exception:
+    except Exception as e:
+        print(f"Session check error: {e}")
         st.session_state.user = None
         st.session_state.authenticated = False
 
 def switch_auth_mode():
     st.session_state.auth_mode = "signup" if st.session_state.auth_mode == "login" else "login"
+    st.rerun()
 
 def login():
     st.markdown('<div class="main-header">', unsafe_allow_html=True)
@@ -201,11 +206,14 @@ def login():
     
     with st.container():
         st.markdown("### 🔐 Welcome back!")
-        email = st.text_input("Email")
-        password = st.text_input("Password", type="password")
+        email = st.text_input("Email", key="login_email")
+        password = st.text_input("Password", type="password", key="login_password")
         col1, col2 = st.columns([1, 2])
         with col1:
-            if st.button("Login", use_container_width=True, type="primary"):
+            if st.button("Login", use_container_width=True, type="primary", key="login_button"):
+                if not email or not password:
+                    st.error("Please enter both email and password.")
+                    return
                 try:
                     auth_response = supabase.auth.sign_in_with_password({
                         "email": email,
@@ -215,13 +223,14 @@ def login():
                         st.session_state.user = auth_response.user
                         st.session_state.authenticated = True
                         st.success("Logged in successfully!")
+                        time.sleep(1)
                         st.rerun()
                     else:
                         st.error("Invalid email or password.")
                 except Exception as e:
                     st.error(f"Login failed: {e}")
         with col2:
-            st.button("Don't have an account? Sign Up", on_click=switch_auth_mode, use_container_width=True)
+            st.button("Don't have an account? Sign Up", on_click=switch_auth_mode, use_container_width=True, key="to_signup_button")
 
 def signup():
     st.markdown('<div class="main-header">', unsafe_allow_html=True)
@@ -235,7 +244,10 @@ def signup():
         password = st.text_input("Password", type="password", key="signup_password")
         col1, col2 = st.columns([1, 2])
         with col1:
-            if st.button("Sign Up", use_container_width=True, type="primary"):
+            if st.button("Sign Up", use_container_width=True, type="primary", key="signup_button"):
+                if not email or not password:
+                    st.error("Please enter both email and password.")
+                    return
                 try:
                     auth_response = supabase.auth.sign_up({
                         "email": email,
@@ -243,6 +255,7 @@ def signup():
                     })
                     if auth_response.user:
                         st.success("Signup successful! Please check your email for confirmation.")
+                        time.sleep(1)
                         st.session_state.auth_mode = "login"
                         st.rerun()
                     else:
@@ -250,23 +263,26 @@ def signup():
                 except Exception as e:
                     st.error(f"Signup failed: {e}")
         with col2:
-            st.button("Already have an account? Login", on_click=switch_auth_mode, use_container_width=True)
+            st.button("Already have an account? Login", on_click=switch_auth_mode, use_container_width=True, key="to_login_button")
 
 def logout():
     try:
         supabase.auth.sign_out()
-        st.session_state.clear()
+        # Clear all session state
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        # Reinitialize essential states
+        st.session_state.initialized = True
         st.session_state.authenticated = False
+        st.session_state.auth_mode = "login"
         st.success("Logged out successfully!")
+        time.sleep(1)
         st.rerun()
     except Exception as e:
         st.error(f"Logout failed: {e}")
 
-# Show login/signup or main app
+# Main app flow control
 if not st.session_state.authenticated:
-    if "auth_mode" not in st.session_state:
-        st.session_state.auth_mode = "login"
-    
     if st.session_state.auth_mode == "login":
         login()
     else:
@@ -283,7 +299,7 @@ st.markdown('</div>', unsafe_allow_html=True)
 with st.sidebar:
     st.markdown(f"### 👋 Welcome, {st.session_state.user.email}")
     st.markdown("---")
-    if st.button("🚪 Logout", use_container_width=True):
+    if st.button("🚪 Logout", use_container_width=True, key="logout_button"):
         logout()
 
 user_id = st.session_state.user.id
