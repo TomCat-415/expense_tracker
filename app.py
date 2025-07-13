@@ -7,7 +7,11 @@ from datetime import datetime, date, timedelta
 import pandas as pd
 import time
 import plotly.graph_objects as go
-from utils.stripe_client import stripe
+from utils import stripe_client
+
+# then access like this:
+stripe_client.stripe.checkout.Session.create(...)
+stripe_client.STRIPE_PUBLISHABLE_KEY
 
 from utils.database import (
     DatabaseError,
