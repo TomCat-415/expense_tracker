@@ -66,39 +66,6 @@ st.markdown("""
         transition: all 0.3s ease;
     }
 </style>
-<script>
-    // Function to handle Enter key in login form
-    function setupLoginForm() {
-        const observer = new MutationObserver((mutations) => {
-            mutations.forEach((mutation) => {
-                if (mutation.addedNodes.length) {
-                    // Find the password input field
-                    const passwordInput = document.querySelector('input[type="password"]');
-                    if (passwordInput && !passwordInput.dataset.handlerAttached) {
-                        passwordInput.addEventListener('keypress', function(e) {
-                            if (e.key === 'Enter') {
-                                e.preventDefault();
-                                // Find and click the login button
-                                const loginButton = document.querySelector('button[kind="primary"]');
-                                if (loginButton) {
-                                    loginButton.click();
-                                }
-                            }
-                        });
-                        passwordInput.dataset.handlerAttached = 'true';
-                    }
-                }
-            });
-        });
-
-        observer.observe(document.body, { childList: true, subtree: true });
-    }
-
-    // Initialize handlers when the page loads
-    window.addEventListener('load', function() {
-        setupLoginForm();
-    });
-</script>
 """, unsafe_allow_html=True)
 
 # ---- Supabase Auth ----
@@ -130,31 +97,33 @@ def login():
     st.caption("Let Expensei guide your money journey!")
     
     st.header("🔐 Login")
-    email = st.text_input("Email", key="login_email")
-    password = st.text_input("Password", type="password", key="login_password", autocomplete="current-password")
-    remember_me = st.checkbox("Remember me", value=True)
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        if st.button("Login", use_container_width=True, key="login_button"):
-            try:
-                auth_response = supabase.auth.sign_in_with_password({
-                    "email": email,
-                    "password": password
-                })
-                if not auth_response.user:
-                    st.error("Invalid email or password.")
-                    return
-                st.session_state.user = auth_response.user
-                
-                # If remember me is checked, we don't need to do anything special
-                # as Supabase will handle the refresh token automatically
-                
-                st.success("Logged in!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Login failed: {e}")
-    with col2:
-        st.button("Don't have an account? Sign Up", on_click=switch_auth_mode, use_container_width=True)
+    with st.form("login_form", clear_on_submit=False):
+        email = st.text_input("Email")
+        password = st.text_input("Password", type="password", autocomplete="current-password")
+        remember_me = st.checkbox("Remember me", value=True)
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            submitted = st.form_submit_button("Login", use_container_width=True)
+            if submitted:
+                try:
+                    auth_response = supabase.auth.sign_in_with_password({
+                        "email": email,
+                        "password": password
+                    })
+                    if not auth_response.user:
+                        st.error("Invalid email or password.")
+                        return
+                    st.session_state.user = auth_response.user
+                    
+                    # If remember me is checked, we don't need to do anything special
+                    # as Supabase will handle the refresh token automatically
+                    
+                    st.success("Logged in!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Login failed: {e}")
+        with col2:
+            st.form_submit_button("Don't have an account? Sign Up", on_click=switch_auth_mode, use_container_width=True)
 
 def signup():
     st.title("🧙‍♂️ Expensei")
@@ -251,7 +220,7 @@ tabs = st.tabs([
     "➕ Add Expense",
     "📸 Scan Receipt",
     "📋 All Expenses",
-    "📊 Enhanced Analytics",
+    "�� Enhanced Analytics",
     "🗄️ Data Management"
 ])
 tab_mapping = {
@@ -344,18 +313,9 @@ with tab1:
             st.plotly_chart(create_top_merchants_chart(df), use_container_width=True, key="dashboard_merchants")
         st.plotly_chart(create_monthly_average_chart(df), use_container_width=True, key="monthly_average")
 
-# Initialize session state for amount field if not exists
-if 'amount_focused' not in st.session_state:
-    st.session_state.amount_focused = False
-
-def on_amount_focus():
-    st.session_state.amount_focused = True
-
-def on_amount_change():
-    if st.session_state.amount_focused:
-        st.session_state.amount_focused = False
-        return ""
-    return 0.0
+# Initialize session state for amount field
+if 'expense_amount' not in st.session_state:
+    st.session_state.expense_amount = ""
 
 # ---------- Add Expense ----------
 with tab2:
@@ -364,16 +324,19 @@ with tab2:
         expense_date = st.date_input("Date", value=date.today(), help="Select the date of the expense")
         col1, col2 = st.columns(2)
         with col1:
-            # Use session state to manage amount field focus and clearing
-            amount = st.number_input(
+            # Use text_input instead of number_input for better control
+            amount_str = st.text_input(
                 "Amount (¥)",
-                value=on_amount_change(),
-                min_value=0.0,
-                step=100.0,
+                value=st.session_state.expense_amount,
                 help="Enter the expense amount",
-                key="expense_amount",
-                on_change=on_amount_focus
+                key="expense_amount_input"
             )
+            # Convert text input to float for validation
+            try:
+                amount = float(amount_str) if amount_str.strip() else 0.0
+            except ValueError:
+                st.error("Please enter a valid number")
+                amount = 0.0
         with col2:
             merchant = st.text_input("Merchant", help="Enter the name of the merchant or store")
         col3, col4 = st.columns(2)
