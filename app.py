@@ -1023,6 +1023,8 @@ with tab6:
                     temp_path.unlink()  # Clean up on error
 
 # ---------- Coffee ----------
+import streamlit.components.v1 as components  # Add this at the top if not already imported
+
 with tab7:
     st.header("☕️ Coffee")
 
@@ -1051,10 +1053,15 @@ with tab7:
         url = create_checkout_session()
         st.success("Redirecting you to Stripe Checkout...")
 
-        # Auto-redirect in same tab
-        js = f"""
-        <script>
-        window.location.href = "{url}";
-        </script>
-        """
-        st.components.v1.html(js)
+        # Auto open in new tab
+        components.html(
+            f"""
+            <script>
+                window.open("{url}", "_blank");
+            </script>
+            """,
+            height=0
+        )
+
+        # Fallback for users with popup blockers
+        st.markdown(f"[Click here if not redirected]({url})", unsafe_allow_html=True)
