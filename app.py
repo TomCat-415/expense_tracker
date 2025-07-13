@@ -58,7 +58,7 @@ from utils.supabase_client import supabase
 # ---- Streamlit Page Config ----
 st.set_page_config(**STREAMLIT_CONFIG)
 
-# Add subtle hover effect for tabs
+# Add custom styles and JavaScript
 st.markdown("""
 <style>
     .stTabs [data-baseweb="tab"]:hover {
@@ -66,6 +66,39 @@ st.markdown("""
         transition: all 0.3s ease;
     }
 </style>
+<script>
+    // Function to handle amount field focus
+    function handleAmountFocus(e) {
+        if (e.target.value === '0.00' || e.target.value === '0.0' || e.target.value === '0') {
+            e.target.value = '';
+        }
+    }
+
+    // Function to handle Enter key in login form
+    function handleLoginEnter(e) {
+        if (e.key === 'Enter') {
+            const loginButton = document.querySelector('button[kind="primary"]');
+            if (loginButton) {
+                loginButton.click();
+            }
+        }
+    }
+
+    // Add event listeners when the page loads
+    window.addEventListener('load', function() {
+        // Handle amount field
+        const amountInputs = document.querySelectorAll('input[aria-label*="Amount"]');
+        amountInputs.forEach(input => {
+            input.addEventListener('focus', handleAmountFocus);
+        });
+
+        // Handle login form Enter key
+        const loginForm = document.querySelector('form');
+        if (loginForm) {
+            loginForm.addEventListener('keypress', handleLoginEnter);
+        }
+    });
+</script>
 """, unsafe_allow_html=True)
 
 # ---- Supabase Auth ----
@@ -97,31 +130,33 @@ def login():
     st.caption("Let Expensei guide your money journey!")
     
     st.header("🔐 Login")
-    email = st.text_input("Email")
-    password = st.text_input("Password", type="password")
-    remember_me = st.checkbox("Remember me", value=True)
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        if st.button("Login", use_container_width=True):
-            try:
-                auth_response = supabase.auth.sign_in_with_password({
-                    "email": email,
-                    "password": password
-                })
-                if not auth_response.user:
-                    st.error("Invalid email or password.")
-                    return
-                st.session_state.user = auth_response.user
-                
-                # If remember me is checked, we don't need to do anything special
-                # as Supabase will handle the refresh token automatically
-                
-                st.success("Logged in!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Login failed: {e}")
-    with col2:
-        st.button("Don't have an account? Sign Up", on_click=switch_auth_mode, use_container_width=True)
+    with st.form("login_form", clear_on_submit=False):
+        email = st.text_input("Email")
+        password = st.text_input("Password", type="password", autocomplete="current-password")
+        remember_me = st.checkbox("Remember me", value=True)
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            submitted = st.form_submit_button("Login", use_container_width=True)
+            if submitted:
+                try:
+                    auth_response = supabase.auth.sign_in_with_password({
+                        "email": email,
+                        "password": password
+                    })
+                    if not auth_response.user:
+                        st.error("Invalid email or password.")
+                        return
+                    st.session_state.user = auth_response.user
+                    
+                    # If remember me is checked, we don't need to do anything special
+                    # as Supabase will handle the refresh token automatically
+                    
+                    st.success("Logged in!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Login failed: {e}")
+        with col2:
+            st.form_submit_button("Don't have an account? Sign Up", on_click=switch_auth_mode, use_container_width=True)
 
 def signup():
     st.title("🧙‍♂️ Expensei")
@@ -318,7 +353,7 @@ with tab2:
         expense_date = st.date_input("Date", value=date.today(), help="Select the date of the expense")
         col1, col2 = st.columns(2)
         with col1:
-            amount = st.number_input("Amount (¥)", min_value=0.0, step=100.0, help="Enter the expense amount")
+            amount = st.number_input("Amount (¥)", min_value=0.0, step=100.0, help="Enter the expense amount", key="expense_amount")
         with col2:
             merchant = st.text_input("Merchant", help="Enter the name of the merchant or store")
         col3, col4 = st.columns(2)
