@@ -73,15 +73,27 @@ st.markdown("""
         const observer = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
                 if (mutation.addedNodes.length) {
-                    const amountInputs = document.querySelectorAll('input[aria-label*="Amount"]');
+                    // Look for number inputs with specific aria-label
+                    const amountInputs = document.querySelectorAll('input[type="number"][aria-label="Amount (¥)"]');
                     amountInputs.forEach(input => {
+                        console.log('Found amount input:', input);
                         if (!input.dataset.handlerAttached) {
-                            input.addEventListener('focus', function() {
+                            input.addEventListener('click', function() {
+                                console.log('Amount field clicked, current value:', this.value);
                                 if (this.value === '0' || this.value === '0.0' || this.value === '0.00') {
                                     this.value = '';
+                                    this.select();
+                                }
+                            });
+                            input.addEventListener('focus', function() {
+                                console.log('Amount field focused, current value:', this.value);
+                                if (this.value === '0' || this.value === '0.0' || this.value === '0.00') {
+                                    this.value = '';
+                                    this.select();
                                 }
                             });
                             input.dataset.handlerAttached = 'true';
+                            console.log('Handlers attached to amount input');
                         }
                     });
                 }
@@ -89,6 +101,7 @@ st.markdown("""
         });
 
         observer.observe(document.body, { childList: true, subtree: true });
+        console.log('Amount field observer started');
     }
 
     // Function to handle Enter key in login form
@@ -120,9 +133,14 @@ st.markdown("""
 
     // Initialize handlers when the page loads
     window.addEventListener('load', function() {
+        console.log('Page loaded, initializing handlers');
         clearAmountOnFocus();
         setupLoginForm();
     });
+
+    // Also try to initialize immediately
+    clearAmountOnFocus();
+    setupLoginForm();
 </script>
 """, unsafe_allow_html=True)
 
@@ -276,7 +294,7 @@ tabs = st.tabs([
     "➕ Add Expense",
     "📸 Scan Receipt",
     "📋 All Expenses",
-    "�� Enhanced Analytics",
+    "📊 Enhanced Analytics",
     "🗄️ Data Management"
 ])
 tab_mapping = {
@@ -376,7 +394,15 @@ with tab2:
         expense_date = st.date_input("Date", value=date.today(), help="Select the date of the expense")
         col1, col2 = st.columns(2)
         with col1:
-            amount = st.number_input("Amount (¥)", value=0.0, min_value=0.0, step=100.0, help="Enter the expense amount", key="expense_amount")
+            amount = st.number_input(
+                "Amount (¥)", 
+                value=0.0, 
+                min_value=0.0, 
+                step=100.0, 
+                help="Enter the expense amount",
+                key="expense_amount",
+                format="%.2f"  # Force 2 decimal places
+            )
         with col2:
             merchant = st.text_input("Merchant", help="Enter the name of the merchant or store")
         col3, col4 = st.columns(2)
