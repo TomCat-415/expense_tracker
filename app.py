@@ -9,10 +9,6 @@ import time
 import plotly.graph_objects as go
 from utils import stripe_client
 
-# then access like this:
-# stripe_client.stripe.checkout.Session.create(...)
-stripe_client.STRIPE_PUBLISHABLE_KEY
-
 from utils.database import (
     DatabaseError,
     ValidationError,
