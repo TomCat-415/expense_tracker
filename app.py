@@ -222,7 +222,7 @@ tabs = st.tabs([
     "📸 Scan Receipt",
     "📋 All Expenses",
     "📊 Enhanced Analytics",
-    "🗄️ Data Management"
+    "🗄️ Data Management",
     "☕️ Coffee"
 ])
 tab_mapping = {
