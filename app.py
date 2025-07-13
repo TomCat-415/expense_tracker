@@ -1027,14 +1027,15 @@ with tab6:
 # ---------- Coffee ----------
 with tab7:
     st.header("☕️ Coffee")
+
     st.markdown("If you find this app useful, you can buy me a flat white with an extra espresso! 🙏")
 
     COFFEE_PRICE = 1000  # Yen
 
     def create_checkout_session():
-        session = stripe_client.stripe.checkout.Session.create(
-            payment_method_types=["card"],
-            line_items=[{
+        session = stripe_client.stripe.checkout.Session.create({
+            "payment_method_types": ["card"],
+            "line_items": [{
                 "price_data": {
                     "currency": "jpy",
                     "product_data": {
@@ -1044,10 +1045,10 @@ with tab7:
                 },
                 "quantity": 1,
             }],
-            mode="payment",
-            success_url="https://expense-tracker-cwrs.onrender.com?success=true",
-            cancel_url="https://expense-tracker-cwrs.onrender.com?canceled=true",
-        )
+            "mode": "payment",
+            "success_url": "https://expense-tracker-cwrs.onrender.com?success=true",
+            "cancel_url": "https://expense-tracker-cwrs.onrender.com?canceled=true",
+        })
         return session.url
 
     if st.button("Buy Me a Coffee (¥1000)"):
