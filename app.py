@@ -1050,5 +1050,11 @@ with tab7:
     if st.button("Buy Me a Coffee (¥1000)"):
         url = create_checkout_session()
         st.success("Redirecting you to Stripe Checkout...")
-        st.markdown(f"[Click here if not redirected]({url})", unsafe_allow_html=True)
-        st.markdown(f"<script>window.open('{url}', '_blank');</script>", unsafe_allow_html=True)
+
+        # Auto-redirect in same tab
+        js = f"""
+        <script>
+        window.location.href = "{url}";
+        </script>
+        """
+        st.components.v1.html(js)
