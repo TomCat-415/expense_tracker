@@ -220,7 +220,7 @@ tabs = st.tabs([
     "➕ Add Expense",
     "📸 Scan Receipt",
     "📋 All Expenses",
-    "�� Enhanced Analytics",
+    "📊 Enhanced Analytics",
     "🗄️ Data Management"
 ])
 tab_mapping = {
