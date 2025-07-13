@@ -344,7 +344,6 @@ with tab2:
         # Amount and merchant in same row
         col1, col2 = st.columns(2)
         with col1:
-            # Use text_input for a blank/auto-clear field
             amount_str = st.text_input(
                 "Amount (¥)",
                 value="",
@@ -353,10 +352,18 @@ with tab2:
                 help="Enter the expense amount"
             )
         with col2:
-            merchant = st.text_input(
+            # Get all unique merchants from user's expense data (df)
+            merchant_options = sorted(df['merchant'].dropna().unique().tolist())
+            merchant_select = st.selectbox(
                 "Merchant",
-                help="Enter the name of the merchant or store"
+                options=[""] + merchant_options,
+                index=0,
+                help="Select a previous merchant or type a new one"
             )
+            if merchant_select == "":
+                merchant = st.text_input("Enter new merchant")
+            else:
+                merchant = merchant_select
 
         # Category and payment method in same row
         col3, col4 = st.columns(2)
@@ -386,7 +393,6 @@ with tab2:
             help="Save this expense to the database"
         )
 
-        # Error/success block
         if submitted:
             try:
                 # Validate and parse amount
@@ -398,7 +404,7 @@ with tab2:
                     show_error("Please enter a valid number for Amount")
                     st.stop()
 
-                if not merchant.strip():
+                if not merchant or not merchant.strip():
                     show_error("Merchant name is required")
                     st.stop()
 
