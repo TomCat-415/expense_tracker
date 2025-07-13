@@ -1027,7 +1027,7 @@ with tab6:
 # ---------- Coffee ----------
 with tab7:
     st.header("☕️ Coffee")
-    st.markdown("If you find this app useful, you can buy me a coffee! 🙏")
+    st.markdown("If you find this app useful, you can buy me a flat white with an extra espresso! 🙏")
 
     COFFEE_PRICE = 1000  # Yen
 
