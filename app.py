@@ -56,6 +56,8 @@ from config.settings import (
 )
 from utils.supabase_client import supabase
 
+st.cache_data.clear()
+
 # ---- Streamlit Page Config ----
 st.set_page_config(**STREAMLIT_CONFIG)
 
@@ -1024,34 +1026,29 @@ with tab6:
 with tab7:
     st.header("☕️ Coffee")
 
-    st.markdown("If you find this app useful, you can buy me a flat white with an extra espresso! 🙏")
+    st.markdown("If you find this app useful, you can buy me a coffee! 🙏")
 
     COFFEE_PRICE = 1000  # Yen
 
     def create_checkout_session():
-        session = stripe_client.stripe.checkout.Session.create({
-            "payment_method_types": ["card"],
-            "line_items": [{
+        session = stripe_client.stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{
                 "price_data": {
                     "currency": "jpy",
-                    "product_data": {
-                        "name": "Buy Me a Coffee"
-                    },
+                    "product_data": {"name": "Buy Me a Coffee"},
                     "unit_amount": COFFEE_PRICE,
                 },
                 "quantity": 1,
             }],
-            "mode": "payment",
-            "success_url": "https://expense-tracker-cwrs.onrender.com?success=true",
-            "cancel_url": "https://expense-tracker-cwrs.onrender.com?canceled=true",
-        })
+            mode="payment",
+            success_url="https://expense-tracker-cwrs.onrender.com?success=true",
+            cancel_url="https://expense-tracker-cwrs.onrender.com?canceled=true",
+        )
         return session.url
 
     if st.button("Buy Me a Coffee (¥1000)"):
         url = create_checkout_session()
         st.success("Redirecting you to Stripe Checkout...")
         st.markdown(f"[Click here if not redirected]({url})", unsafe_allow_html=True)
-        st.markdown(
-            f"<script>window.open('{url}', '_blank');</script>",
-            unsafe_allow_html=True
-        )
+        st.markdown(f"<script>window.open('{url}', '_blank');</script>", unsafe_allow_html=True)
