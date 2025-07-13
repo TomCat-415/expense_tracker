@@ -11,3 +11,4 @@ python-dateutil>=2.8.2
 openai>=1.0.0
 google-cloud-vision>=3.10.2
 supabase>=2.16.0
+stripe>=10.1.0

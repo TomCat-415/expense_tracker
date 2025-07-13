@@ -7,6 +7,7 @@ from datetime import datetime, date, timedelta
 import pandas as pd
 import time
 import plotly.graph_objects as go
+from utils.stripe_client import stripe
 
 from utils.database import (
     DatabaseError,
@@ -222,6 +223,7 @@ tabs = st.tabs([
     "📋 All Expenses",
     "📊 Enhanced Analytics",
     "🗄️ Data Management"
+    "☕️ Coffee"
 ])
 tab_mapping = {
     "📊 Dashboard": 0,
@@ -229,10 +231,11 @@ tab_mapping = {
     "📸 Scan Receipt": 2,
     "📋 All Expenses": 3,
     "📊 Enhanced Analytics": 4,
-    "🗄️ Data Management": 5
+    "🗄️ Data Management": 5,
+    "☕️ Coffee": 6
 }
 active_index = tab_mapping.get(st.session_state.active_tab, 0)
-tab1, tab2, tab3, tab4, tab5, tab6 = tabs
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = tabs
 
 # ---- Load All Expenses for This User ----
 try:
@@ -1016,3 +1019,34 @@ with tab6:
                 st.error(f"Error restoring backup: {str(e)}")
                 if temp_path.exists():
                     temp_path.unlink()  # Clean up on error
+
+# ---------- Coffee ----------
+with tab7:
+    st.header("☕️ Coffee")
+
+    st.markdown("If you find this app useful, you can buy me a coffee! 🙏")
+
+    COFFEE_PRICE = 1000  # Yen
+
+    def create_checkout_session():
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{
+                "price_data": {
+                    "currency": "jpy",
+                    "product_data": {"name": "Buy Me a Coffee"},
+                    "unit_amount": COFFEE_PRICE,
+                },
+                "quantity": 1,
+            }],
+            mode="payment",
+            success_url="https://expense-tracker-cwrs.onrender.com?success=true",
+            cancel_url="https://expense-tracker-cwrs.onrender.com?canceled=true",
+        )
+        return session.url
+
+    if st.button("Buy Me a Coffee (¥1000)"):
+        url = create_checkout_session()
+        st.success("Redirecting you to Stripe Checkout...")
+        st.markdown(f"[Click here if not redirected]({url})", unsafe_allow_html=True)
+        st.markdown(f"<script>window.open('{url}', '_blank');</script>", unsafe_allow_html=True)
