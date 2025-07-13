@@ -127,7 +127,7 @@ def login():
 
 def signup():
     st.title("🧙‍♂️ Expensei")
-    st.caption("Let Expensei guide your money journey!")
+    st.caption("Say hello to your Expense Sensei!")
     
     st.header("📝 Sign Up")
     email = st.text_input("Email", key="signup_email")
@@ -320,38 +320,76 @@ if 'expense_amount' not in st.session_state:
 # ---------- Add Expense ----------
 with tab2:
     st.header("➕ Add Expense")
+
     with st.form("add_expense_form", clear_on_submit=True):
-        expense_date = st.date_input("Date", value=date.today(), help="Select the date of the expense")
+        # Date input
+        expense_date = st.date_input(
+            "Date",
+            value=date.today(),
+            help="Select the date of the expense"
+        )
+
+        # Amount and merchant in same row
         col1, col2 = st.columns(2)
         with col1:
-            # Use text_input instead of number_input for better control
+            # Use text_input for a blank/auto-clear field
             amount_str = st.text_input(
                 "Amount (¥)",
-                value=st.session_state.expense_amount,
-                help="Enter the expense amount",
-                key="expense_amount_input"
+                value="",
+                placeholder="Enter amount",
+                key="amount_input",
+                help="Enter the expense amount"
             )
-            # Convert text input to float for validation
-            try:
-                amount = float(amount_str) if amount_str.strip() else 0.0
-            except ValueError:
-                st.error("Please enter a valid number")
-                amount = 0.0
         with col2:
-            merchant = st.text_input("Merchant", help="Enter the name of the merchant or store")
+            merchant = st.text_input(
+                "Merchant",
+                help="Enter the name of the merchant or store"
+            )
+
+        # Category and payment method in same row
         col3, col4 = st.columns(2)
         with col3:
-            category = st.selectbox("Category", options=list(DEFAULT_CATEGORIES.keys()), help="Select the expense category")
+            category = st.selectbox(
+                "Category",
+                options=list(DEFAULT_CATEGORIES.keys()),
+                help="Select the expense category"
+            )
         with col4:
-            payment_method = st.selectbox("Payment Method", options=["Credit Card", "Debit Card", "Cash", "Digital Wallet", "Other"], help="Select the payment method used")
-        description = st.text_area("Description (optional)", help="Add any additional notes about the expense")
-        submitted = st.form_submit_button("Add Expense", use_container_width=True, help="Save this expense to the database")
+            payment_method = st.selectbox(
+                "Payment Method",
+                options=["Credit Card", "Debit Card", "Cash", "Digital Wallet", "Other"],
+                help="Select the payment method used"
+            )
+
+        # Optional description
+        description = st.text_area(
+            "Description (optional)",
+            help="Add any additional notes about the expense"
+        )
+
+        # Submit button
+        submitted = st.form_submit_button(
+            "Add Expense",
+            use_container_width=True,
+            help="Save this expense to the database"
+        )
+
+        # Error/success block
         if submitted:
             try:
+                # Validate and parse amount
+                try:
+                    amount = float(amount_str.strip())
+                    if amount <= 0:
+                        raise ValidationError("Amount must be greater than 0")
+                except ValueError:
+                    show_error("Please enter a valid number for Amount")
+                    st.stop()
+
                 if not merchant.strip():
-                    raise ValidationError("Merchant name is required")
-                if amount <= 0:
-                    raise ValidationError("Amount must be greater than 0")
+                    show_error("Merchant name is required")
+                    st.stop()
+
                 expense_data = {
                     "date": expense_date,
                     "merchant": merchant.strip(),
@@ -366,6 +404,8 @@ with tab2:
                 st.rerun()
             except (ValidationError, DatabaseError) as e:
                 show_error(str(e))
+            except Exception as e:
+                show_error(f"Error adding expense: {str(e)}")
 
 # ---------- Receipt Scanner ----------
 with tab3:
