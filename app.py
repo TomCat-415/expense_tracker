@@ -248,11 +248,19 @@ with tab1:
     if df.empty:
         st.info("No expenses to analyze. Add some expenses to see analytics!")
     else:
-        # Calculate time-based spending
+        # Make sure date is datetime
+        df['date'] = pd.to_datetime(df['date'])
+
         today = pd.Timestamp.now()
         current_month_df = df[df['date'].dt.to_period('M') == today.to_period('M')]
-        current_week_df = df[df['date'].dt.isocalendar().week == today.isocalendar().week]
         current_year_df = df[df['date'].dt.year == today.year]
+        current_week = today.isocalendar().week
+        current_year_num = today.isocalendar().year
+
+        current_week_df = df[
+            (df['date'].dt.isocalendar().week == current_week) &
+            (df['date'].dt.isocalendar().year == current_year_num)
+        ]
 
         monthly_spending = current_month_df['amount'].sum()
         weekly_spending = current_week_df['amount'].sum()
