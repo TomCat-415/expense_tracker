@@ -248,24 +248,28 @@ with tab1:
     if df.empty:
         st.info("No expenses to analyze. Add some expenses to see analytics!")
     else:
-        # Calculate monthly and yearly spending
+        # Calculate time-based spending
         today = pd.Timestamp.now()
         current_month_df = df[df['date'].dt.to_period('M') == today.to_period('M')]
+        current_week_df = df[df['date'].dt.isocalendar().week == today.isocalendar().week]
         current_year_df = df[df['date'].dt.year == today.year]
-        
+
         monthly_spending = current_month_df['amount'].sum()
-        yearly_spending = current_year_df['amount'].sum()
+        weekly_spending = current_week_df['amount'].sum()
         daily_avg = df.groupby('date')['amount'].sum().mean()
-        total_transactions = len(df)
-        
-        kpi1, kpi2, kpi3 = st.columns(3)
+        yearly_spending = current_year_df['amount'].sum()
+
+        # KPI Columns: Monthly, Weekly, Daily Average, Yearly
+        kpi1, kpi2, kpi3, kpi4 = st.columns(4)
         with kpi1:
             st.metric("Monthly Spending", f"¥{monthly_spending:,.0f}")
         with kpi2:
-            st.metric("Yearly Spending", f"¥{yearly_spending:,.0f}")
+            st.metric("Weekly Spending", f"¥{weekly_spending:,.0f}")
         with kpi3:
             st.metric("Daily Average", f"¥{daily_avg:,.0f}")
-        
+        with kpi4:
+            st.metric("Yearly Spending", f"¥{yearly_spending:,.0f}")
+
         st.markdown("---")
         
         # Create daily spending trend with daily totals
