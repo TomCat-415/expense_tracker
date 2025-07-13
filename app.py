@@ -67,43 +67,6 @@ st.markdown("""
     }
 </style>
 <script>
-    // Function to handle amount field focus
-    function clearAmountOnFocus() {
-        // Use MutationObserver to handle dynamically added elements
-        const observer = new MutationObserver((mutations) => {
-            mutations.forEach((mutation) => {
-                if (mutation.addedNodes.length) {
-                    // Look for number inputs with specific aria-label
-                    const amountInputs = document.querySelectorAll('input[type="number"][aria-label="Amount (¥)"]');
-                    amountInputs.forEach(input => {
-                        console.log('Found amount input:', input);
-                        if (!input.dataset.handlerAttached) {
-                            input.addEventListener('click', function() {
-                                console.log('Amount field clicked, current value:', this.value);
-                                if (this.value === '0' || this.value === '0.0' || this.value === '0.00') {
-                                    this.value = '';
-                                    this.select();
-                                }
-                            });
-                            input.addEventListener('focus', function() {
-                                console.log('Amount field focused, current value:', this.value);
-                                if (this.value === '0' || this.value === '0.0' || this.value === '0.00') {
-                                    this.value = '';
-                                    this.select();
-                                }
-                            });
-                            input.dataset.handlerAttached = 'true';
-                            console.log('Handlers attached to amount input');
-                        }
-                    });
-                }
-            });
-        });
-
-        observer.observe(document.body, { childList: true, subtree: true });
-        console.log('Amount field observer started');
-    }
-
     // Function to handle Enter key in login form
     function setupLoginForm() {
         const observer = new MutationObserver((mutations) => {
@@ -133,14 +96,8 @@ st.markdown("""
 
     // Initialize handlers when the page loads
     window.addEventListener('load', function() {
-        console.log('Page loaded, initializing handlers');
-        clearAmountOnFocus();
         setupLoginForm();
     });
-
-    // Also try to initialize immediately
-    clearAmountOnFocus();
-    setupLoginForm();
 </script>
 """, unsafe_allow_html=True)
 
@@ -387,6 +344,19 @@ with tab1:
             st.plotly_chart(create_top_merchants_chart(df), use_container_width=True, key="dashboard_merchants")
         st.plotly_chart(create_monthly_average_chart(df), use_container_width=True, key="monthly_average")
 
+# Initialize session state for amount field if not exists
+if 'amount_focused' not in st.session_state:
+    st.session_state.amount_focused = False
+
+def on_amount_focus():
+    st.session_state.amount_focused = True
+
+def on_amount_change():
+    if st.session_state.amount_focused:
+        st.session_state.amount_focused = False
+        return ""
+    return 0.0
+
 # ---------- Add Expense ----------
 with tab2:
     st.header("➕ Add Expense")
@@ -394,14 +364,15 @@ with tab2:
         expense_date = st.date_input("Date", value=date.today(), help="Select the date of the expense")
         col1, col2 = st.columns(2)
         with col1:
+            # Use session state to manage amount field focus and clearing
             amount = st.number_input(
-                "Amount (¥)", 
-                value=0.0, 
-                min_value=0.0, 
-                step=100.0, 
+                "Amount (¥)",
+                value=on_amount_change(),
+                min_value=0.0,
+                step=100.0,
                 help="Enter the expense amount",
                 key="expense_amount",
-                format="%.2f"  # Force 2 decimal places
+                on_change=on_amount_focus
             )
         with col2:
             merchant = st.text_input("Merchant", help="Enter the name of the merchant or store")
