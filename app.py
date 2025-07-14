@@ -358,19 +358,16 @@ with tab2:
             )
         with col2:
             merchant_options = sorted(df['merchant'].dropna().unique().tolist())
-            merchant_select = st.selectbox(
+            merchant_input = st.text_input(
                 "Merchant",
-                options=merchant_options + ["Other (type new)"],
-                help="Start typing to search saved merchants or select 'Other'"
+                value="",
+                placeholder="Type to search or enter new",
+                help="Type the merchant name (autocomplete supported)",
             )
 
-            if merchant_select == "Other (type new)":
-                merchant = st.text_input(
-                    "Enter new merchant",
-                    placeholder="e.g. Nike, Don Quijote, etc."
-                )
-            else:
-                merchant = merchant_select
+            # Case-insensitive match for existing options
+            match = next((m for m in merchant_options if m.lower() == merchant_input.lower()), None)
+            merchant = match if match else merchant_input.strip()
 
         # Category and payment method in same row
         col3, col4 = st.columns(2)
@@ -411,13 +408,13 @@ with tab2:
                     show_error("Please enter a valid number for Amount")
                     st.stop()
 
-                if not merchant or not merchant.strip():
+                if not merchant:
                     show_error("Merchant name is required")
                     st.stop()
 
                 expense_data = {
                     "date": expense_date,
-                    "merchant": merchant.strip(),
+                    "merchant": merchant,
                     "amount": amount,
                     "category": category,
                     "description": description.strip(),
