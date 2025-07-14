@@ -357,22 +357,20 @@ with tab2:
                 help="Enter the expense amount"
             )
         with col2:
-            # Unified merchant input with suggestion logic
             merchant_options = sorted(df['merchant'].dropna().unique().tolist())
-            typed_merchant = st.text_input(
+            merchant_select = st.selectbox(
                 "Merchant",
-                placeholder="Type to search or enter new",
-                help="Search for saved merchants or enter a new one",
-                key="merchant_input"
+                options=merchant_options + ["Other (type new)"],
+                help="Start typing to search saved merchants or select 'Other'"
             )
 
-            # Suggest dropdown if typed merchant matches any saved
-            suggested = [m for m in merchant_options if typed_merchant.lower() in m.lower()] if typed_merchant else []
-
-            if suggested:
-                merchant = st.selectbox("Select a match", suggested, index=0, key="merchant_selectbox")
+            if merchant_select == "Other (type new)":
+                merchant = st.text_input(
+                    "Enter new merchant",
+                    placeholder="e.g. Nike, Don Quijote, etc."
+                )
             else:
-                merchant = typed_merchant
+                merchant = merchant_select
 
         # Category and payment method in same row
         col3, col4 = st.columns(2)
