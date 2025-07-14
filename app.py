@@ -357,17 +357,24 @@ with tab2:
                 help="Enter the expense amount"
             )
         with col2:
-            merchant_list = sorted(df['merchant'].dropna().unique().tolist())
-            merchant = st.text_input(
+            # Unified merchant input with suggestion logic
+            merchant_options = sorted(df['merchant'].dropna().unique().tolist())
+            typed_merchant = st.text_input(
                 "Merchant",
-                placeholder="Start typing (e.g., 7, a, c...)",
-                help="Start typing to search or add a new merchant"
+                placeholder="Type to search or enter new",
+                help="Search for saved merchants or enter a new one",
+                key="merchant_input"
             )
-            match = [m for m in merchant_list if merchant.lower() in m.lower()]
-            if match:
-                merchant = st.selectbox("Select a match", match, index=0)
 
-        # Category and payment method
+            # Suggest dropdown if typed merchant matches any saved
+            suggested = [m for m in merchant_options if typed_merchant.lower() in m.lower()] if typed_merchant else []
+
+            if suggested:
+                merchant = st.selectbox("Select a match", suggested, index=0, key="merchant_selectbox")
+            else:
+                merchant = typed_merchant
+
+        # Category and payment method in same row
         col3, col4 = st.columns(2)
         with col3:
             category = st.selectbox(
@@ -382,11 +389,13 @@ with tab2:
                 help="Select the payment method used"
             )
 
+        # Optional description
         description = st.text_area(
             "Description (optional)",
             help="Add any additional notes about the expense"
         )
 
+        # Submit button
         submitted = st.form_submit_button(
             "Add Expense",
             use_container_width=True,
@@ -395,6 +404,7 @@ with tab2:
 
         if submitted:
             try:
+                # Validate and parse amount
                 try:
                     amount = float(amount_str.strip())
                     if amount <= 0:
