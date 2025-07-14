@@ -357,20 +357,17 @@ with tab2:
                 help="Enter the expense amount"
             )
         with col2:
-            # Get all unique merchants from user's expense data (df)
-            merchant_options = sorted(df['merchant'].dropna().unique().tolist())
-            merchant_select = st.selectbox(
+            merchant_list = sorted(df['merchant'].dropna().unique().tolist())
+            merchant = st.text_input(
                 "Merchant",
-                options=[""] + merchant_options,
-                index=0,
-                help="Select a previous merchant or type a new one"
+                placeholder="Start typing (e.g., 7, a, c...)",
+                help="Start typing to search or add a new merchant"
             )
-            if merchant_select == "":
-                merchant = st.text_input("Enter new merchant")
-            else:
-                merchant = merchant_select
+            match = [m for m in merchant_list if merchant.lower() in m.lower()]
+            if match:
+                merchant = st.selectbox("Select a match", match, index=0)
 
-        # Category and payment method in same row
+        # Category and payment method
         col3, col4 = st.columns(2)
         with col3:
             category = st.selectbox(
@@ -385,13 +382,11 @@ with tab2:
                 help="Select the payment method used"
             )
 
-        # Optional description
         description = st.text_area(
             "Description (optional)",
             help="Add any additional notes about the expense"
         )
 
-        # Submit button
         submitted = st.form_submit_button(
             "Add Expense",
             use_container_width=True,
@@ -400,7 +395,6 @@ with tab2:
 
         if submitted:
             try:
-                # Validate and parse amount
                 try:
                     amount = float(amount_str.strip())
                     if amount <= 0:
