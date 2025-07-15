@@ -27,7 +27,16 @@ from utils.database import (
     delete_custom_category,
     get_available_categories,
     DEFAULT_CATEGORIES,
-    BUDGET_LIMITS
+    BUDGET_LIMITS,
+    # Recurring expenses functions
+    add_recurring_expense,
+    get_recurring_expenses,
+    update_recurring_expense,
+    delete_recurring_expense,
+    get_due_recurring_expenses,
+    generate_expense_from_recurring,
+    suggest_recurring_expenses,
+    calculate_next_due_date
 )
 from utils.ocr import extract_text_from_image, process_receipt
 from utils.charts import (
@@ -269,6 +278,7 @@ tabs = st.tabs([
     "📋 All Expenses",
     "📊 Enhanced Analytics",
     "🗄️ Data Management",
+    "🔄 Recurring Expenses",
     "☕️ Coffee"
 ])
 tab_mapping = {
@@ -278,10 +288,11 @@ tab_mapping = {
     "📋 All Expenses": 3,
     "📊 Enhanced Analytics": 4,
     "🗄️ Data Management": 5,
-    "☕️ Coffee": 6
+    "🔄 Recurring Expenses": 6,
+    "☕️ Coffee": 7
 }
 active_index = tab_mapping.get(st.session_state.active_tab, 0)
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = tabs
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = tabs
 
 # ---- Load All Expenses for This User ----
 try:
@@ -297,40 +308,64 @@ with tab1:
     if df.empty:
         st.info("No expenses to analyze. Add some expenses to see analytics!")
     else:
+        # Get user settings for excluded categories (but don't show UI yet)
+        try:
+            user_settings = get_user_settings(user_id)
+            excluded_categories = user_settings.get('excluded_dashboard_categories', [])
+        except Exception as e:
+            excluded_categories = []
+        
+        # Get available categories for this user
+        available_categories = get_available_categories(user_id)
+        
+        # Filter dataframe based on excluded categories (silent filtering)
+        if excluded_categories:
+            filtered_df = df[~df['category'].isin(excluded_categories)]
+        else:
+            filtered_df = df
+        
+        # Check if filtered dataframe is empty
+        if filtered_df.empty:
+            st.warning("⚠️ All categories are excluded. Please enable at least one category to view analytics.")
+            st.stop()
+        
+        # Use filtered dataframe for all calculations
+        df_to_use = filtered_df
         # Make sure date is datetime
-        df['date'] = pd.to_datetime(df['date'])
+        df_to_use['date'] = pd.to_datetime(df_to_use['date'])
 
         today = pd.Timestamp.now()
-        current_month_df = df[df['date'].dt.to_period('M') == today.to_period('M')]
-        current_year_df = df[df['date'].dt.year == today.year]
+        current_month_df = df_to_use[df_to_use['date'].dt.to_period('M') == today.to_period('M')]
+        current_year_df = df_to_use[df_to_use['date'].dt.year == today.year]
         current_week = today.isocalendar().week
         current_year_num = today.isocalendar().year
 
-        current_week_df = df[
-            (df['date'].dt.isocalendar().week == current_week) &
-            (df['date'].dt.isocalendar().year == current_year_num)
+        current_week_df = df_to_use[
+            (df_to_use['date'].dt.isocalendar().week == current_week) &
+            (df_to_use['date'].dt.isocalendar().year == current_year_num)
         ]
 
         monthly_spending = current_month_df['amount'].sum()
         weekly_spending = current_week_df['amount'].sum()
-        daily_avg = df.groupby('date')['amount'].sum().mean()
+        daily_avg = df_to_use.groupby('date')['amount'].sum().mean()
         yearly_spending = current_year_df['amount'].sum()
 
         # KPI Columns: Monthly, Weekly, Daily Average, Yearly
         kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+        filter_suffix = f" (filtered)" if excluded_categories else ""
         with kpi1:
-            st.metric("Monthly Spending", f"¥{monthly_spending:,.0f}")
+            st.metric("Monthly Spending" + filter_suffix, f"¥{monthly_spending:,.0f}")
         with kpi2:
-            st.metric("Weekly Spending", f"¥{weekly_spending:,.0f}")
+            st.metric("Weekly Spending" + filter_suffix, f"¥{weekly_spending:,.0f}")
         with kpi3:
-            st.metric("Daily Average", f"¥{daily_avg:,.0f}")
+            st.metric("Daily Average" + filter_suffix, f"¥{daily_avg:,.0f}")
         with kpi4:
-            st.metric("Yearly Spending", f"¥{yearly_spending:,.0f}")
+            st.metric("Yearly Spending" + filter_suffix, f"¥{yearly_spending:,.0f}")
 
         st.markdown("---")
         
         # Create daily spending trend with daily totals
-        daily_totals = df.groupby('date')['amount'].sum().reset_index()
+        daily_totals = df_to_use.groupby('date')['amount'].sum().reset_index()
         daily_totals = daily_totals.sort_values('date')
         
         # Create the daily spending trend chart
@@ -369,10 +404,98 @@ with tab1:
         
         col1, col2 = st.columns(2)
         with col1:
-            st.plotly_chart(create_spending_by_category_pie(df.to_dict('records'), user_id=user_id), use_container_width=True, key="dashboard_category_pie")
+            st.plotly_chart(create_spending_by_category_pie(df_to_use.to_dict('records'), user_id=user_id), use_container_width=True, key="dashboard_category_pie")
         with col2:
-            st.plotly_chart(create_top_merchants_chart(df), use_container_width=True, key="dashboard_merchants")
-        st.plotly_chart(create_monthly_average_chart(df), use_container_width=True, key="monthly_average")
+            st.plotly_chart(create_top_merchants_chart(df_to_use), use_container_width=True, key="dashboard_merchants")
+        st.plotly_chart(create_monthly_average_chart(df_to_use), use_container_width=True, key="monthly_average")
+
+        # ==================== CATEGORY FILTERS SECTION ====================
+        st.markdown("---")
+        
+        # Show current filter status if any categories are excluded
+        if excluded_categories:
+            excluded_total = df[df['category'].isin(excluded_categories)]['amount'].sum()
+            st.info(f"📊 **Filtered View**: Excluding {len(excluded_categories)} categories (¥{excluded_total:,.0f} hidden)")
+        
+        # Expandable category filter section
+        with st.expander("🎯 **Want to see spending without fixed expenses like rent?**", expanded=False):
+            st.markdown("**💡 Filter out recurring expenses to focus on your discretionary spending**")
+            
+            # Quick preset buttons for common use cases
+            preset_col1, preset_col2, preset_col3 = st.columns(3)
+            with preset_col1:
+                if st.button("🏠 Hide Housing & Bills", key="preset_fixed"):
+                    try:
+                        fixed_categories = [cat for cat in available_categories if any(keyword in cat.lower() for keyword in ['housing', 'rent', 'bills', 'utilities'])]
+                        if 'user_settings' not in locals():
+                            user_settings = get_user_settings(user_id)
+                        user_settings['excluded_dashboard_categories'] = fixed_categories
+                        update_user_settings(user_id, user_settings)
+                        st.rerun()
+                    except Exception as e:
+                        st.error("Please add the excluded_dashboard_categories column to your database first.")
+            
+            with preset_col2:
+                if st.button("🎉 Show Fun & Flexible", key="preset_discretionary"):
+                    try:
+                        keep_categories = [cat for cat in available_categories if any(keyword in cat.lower() for keyword in ['food', 'dining', 'shopping', 'entertainment', 'coffee', 'fun', 'retail', 'treats', 'eats'])]
+                        excluded = [cat for cat in available_categories if cat not in keep_categories]
+                        if 'user_settings' not in locals():
+                            user_settings = get_user_settings(user_id)
+                        user_settings['excluded_dashboard_categories'] = excluded
+                        update_user_settings(user_id, user_settings)
+                        st.rerun()
+                    except Exception as e:
+                        st.error("Please add the excluded_dashboard_categories column to your database first.")
+            
+            with preset_col3:
+                if st.button("🔄 Show All Categories", key="preset_all"):
+                    try:
+                        if 'user_settings' not in locals():
+                            user_settings = get_user_settings(user_id)
+                        user_settings['excluded_dashboard_categories'] = []
+                        update_user_settings(user_id, user_settings)
+                        st.rerun()
+                    except Exception as e:
+                        st.error("Please add the excluded_dashboard_categories column to your database first.")
+            
+            st.markdown("---")
+            st.markdown("**🎛️ Or customize individual categories:**")
+            
+            # Individual category toggles in a more compact layout
+            toggle_cols = st.columns(3)
+            col_index = 0
+            updated_excluded = []
+            
+            for category in available_categories:
+                with toggle_cols[col_index % 3]:
+                    # Toggle is ON when category is NOT excluded (shown)
+                    is_shown = st.checkbox(
+                        f"Show {category}",
+                        value=category not in excluded_categories,
+                        key=f"show_{category}"
+                    )
+                    if not is_shown:
+                        updated_excluded.append(category)
+                col_index += 1
+            
+            # Update user settings if exclusions changed
+            if updated_excluded != excluded_categories:
+                try:
+                    if 'user_settings' not in locals():
+                        user_settings = get_user_settings(user_id)
+                    user_settings['excluded_dashboard_categories'] = updated_excluded
+                    update_user_settings(user_id, user_settings)
+                    st.rerun()
+                except Exception as e:
+                    st.error("⚠️ **Database Setup Required**: Please add the excluded_dashboard_categories column to your database.")
+                    st.info("📝 **To fix this**: Go to your Supabase SQL Editor and run the `add_excluded_categories_column.sql` script.")
+                    st.code("""
+-- Copy and paste this into Supabase SQL Editor:
+ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS excluded_dashboard_categories JSONB DEFAULT '[]'::jsonb;
+CREATE INDEX IF NOT EXISTS idx_user_settings_excluded_categories ON user_settings USING GIN (excluded_dashboard_categories);
+COMMENT ON COLUMN user_settings.excluded_dashboard_categories IS 'Array of category names to exclude from dashboard view';
+                    """, language="sql")
 
 # Initialize session state for amount field
 if 'expense_amount' not in st.session_state:
@@ -1499,10 +1622,280 @@ with tab6:
                 if temp_path.exists():
                     temp_path.unlink()  # Clean up on error
 
+# ---------- Recurring Expenses ----------
+with tab7:
+    st.header("🔄 Recurring Expenses")
+    
+    # Get user's recurring expenses
+    try:
+        recurring_expenses = get_recurring_expenses(user_id)
+        due_expenses = get_due_recurring_expenses(user_id)
+        suggestions = suggest_recurring_expenses(user_id)
+    except Exception as e:
+        st.error(f"Error loading recurring expenses: {str(e)}")
+        recurring_expenses = []
+        due_expenses = []
+        suggestions = []
+    
+    # Show due expenses notification if any
+    if due_expenses:
+        st.info(f"💡 You have {len(due_expenses)} recurring expense(s) due for approval!")
+        
+        for due_expense in due_expenses:
+            with st.expander(f"Due: {due_expense['name']} - ¥{due_expense['amount']:,.0f}"):
+                col1, col2, col3 = st.columns([2, 1, 1])
+                
+                with col1:
+                    st.write(f"**Merchant:** {due_expense['merchant']}")
+                    st.write(f"**Category:** {due_expense['category']}")
+                    st.write(f"**Amount:** ¥{due_expense['amount']:,.0f}")
+                    st.write(f"**Due Date:** {due_expense['next_due_date']}")
+                
+                with col2:
+                    if st.button("✅ Approve", key=f"approve_{due_expense['id']}"):
+                        try:
+                            expense_id = generate_expense_from_recurring(user_id, due_expense['id'])
+                            st.success(f"✅ Expense approved and added!")
+                            time.sleep(1)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error approving expense: {str(e)}")
+                
+                with col3:
+                    if st.button("✏️ Edit & Approve", key=f"edit_approve_{due_expense['id']}"):
+                        st.session_state[f"edit_due_{due_expense['id']}"] = True
+                        st.rerun()
+                
+                # Edit form for due expense
+                if st.session_state.get(f"edit_due_{due_expense['id']}", False):
+                    with st.form(f"edit_due_form_{due_expense['id']}"):
+                        st.markdown("### Edit & Approve Expense")
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            edit_amount = st.number_input(
+                                "Amount (¥)",
+                                value=float(due_expense['amount']),
+                                min_value=0.0,
+                                step=100.0
+                            )
+                        with col2:
+                            edit_merchant = st.text_input(
+                                "Merchant",
+                                value=due_expense['merchant']
+                            )
+                        
+                        col3, col4 = st.columns(2)
+                        with col3:
+                            available_categories = get_available_categories(user_id)
+                            try:
+                                current_index = available_categories.index(due_expense['category'])
+                            except ValueError:
+                                current_index = 0
+                            
+                            edit_category = st.selectbox(
+                                "Category",
+                                options=available_categories,
+                                index=current_index
+                            )
+                        with col4:
+                            edit_payment_method = st.selectbox(
+                                "Payment Method",
+                                options=["Credit Card", "Debit Card", "Cash", "Digital Wallet", "Other"],
+                                index=["Credit Card", "Debit Card", "Cash", "Digital Wallet", "Other"].index(due_expense['payment_method']) if due_expense['payment_method'] in ["Credit Card", "Debit Card", "Cash", "Digital Wallet", "Other"] else 0
+                            )
+                        
+                        edit_description = st.text_area(
+                            "Description (optional)",
+                            value=due_expense['description'] if due_expense['description'] else ""
+                        )
+                        
+                        col5, col6 = st.columns(2)
+                        with col5:
+                            if st.form_submit_button("💾 Save & Approve"):
+                                try:
+                                    override_data = {
+                                        "amount": edit_amount,
+                                        "merchant": edit_merchant,
+                                        "category": edit_category,
+                                        "payment_method": edit_payment_method,
+                                        "description": edit_description
+                                    }
+                                    
+                                    expense_id = generate_expense_from_recurring(user_id, due_expense['id'], override_data)
+                                    del st.session_state[f"edit_due_{due_expense['id']}"]
+                                    st.success("✅ Expense updated and approved!")
+                                    time.sleep(1)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error updating expense: {str(e)}")
+                        
+                        with col6:
+                            if st.form_submit_button("❌ Cancel"):
+                                del st.session_state[f"edit_due_{due_expense['id']}"]
+                                st.rerun()
+    
+    # Main content tabs
+    recurring_tabs = st.tabs(["📝 Manage Recurring", "➕ Add New", "💡 Suggestions"])
+    
+    # Manage Recurring tab
+    with recurring_tabs[0]:
+        st.markdown("### 📝 Your Recurring Expenses")
+        
+        if not recurring_expenses:
+            st.info("No recurring expenses set up yet. Click 'Add New' to create your first recurring expense!")
+        else:
+            for recurring in recurring_expenses:
+                with st.expander(f"{recurring['name']} - ¥{recurring['amount']:,.0f} ({recurring['frequency']})"):
+                    col1, col2, col3 = st.columns([2, 1, 1])
+                    
+                    with col1:
+                        st.write(f"**Merchant:** {recurring['merchant']}")
+                        st.write(f"**Category:** {recurring['category']}")
+                        st.write(f"**Amount:** ¥{recurring['amount']:,.0f}")
+                        st.write(f"**Frequency:** {recurring['frequency'].title()}")
+                        st.write(f"**Next Due:** {recurring['next_due_date']}")
+                        st.write(f"**Status:** {'🟢 Active' if recurring['is_active'] else '🔴 Inactive'}")
+                        if recurring['averaging_type'] != 'none':
+                            st.write(f"**Averaging:** {recurring['averaging_type'].title()}")
+                    
+                    with col2:
+                        if st.button("✏️ Edit", key=f"edit_recurring_{recurring['id']}"):
+                            st.session_state[f"edit_recurring_{recurring['id']}"] = True
+                            st.rerun()
+                    
+                    with col3:
+                        if st.button("🗑️ Delete", key=f"delete_recurring_{recurring['id']}"):
+                            try:
+                                delete_recurring_expense(user_id, recurring['id'])
+                                st.success("✅ Recurring expense deleted!")
+                                time.sleep(1)
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error deleting recurring expense: {str(e)}")
+    
+    # Add New tab
+    with recurring_tabs[1]:
+        st.markdown("### ➕ Add New Recurring Expense")
+        
+        with st.form("add_recurring_form"):
+            col1, col2 = st.columns(2)
+            with col1:
+                recurring_name = st.text_input("Name", placeholder="e.g., Monthly Rent")
+                recurring_merchant = st.text_input("Merchant", placeholder="e.g., Property Management")
+            with col2:
+                recurring_amount = st.number_input("Amount (¥)", min_value=0.0, step=100.0)
+                recurring_frequency = st.selectbox(
+                    "Frequency",
+                    options=["monthly", "weekly", "quarterly", "yearly"],
+                    format_func=lambda x: x.title()
+                )
+            
+            col3, col4 = st.columns(2)
+            with col3:
+                available_categories = get_available_categories(user_id)
+                recurring_category = st.selectbox("Category", options=available_categories)
+            with col4:
+                recurring_payment_method = st.selectbox(
+                    "Payment Method",
+                    options=["Credit Card", "Debit Card", "Cash", "Digital Wallet", "Other"]
+                )
+            
+            col5, col6 = st.columns(2)
+            with col5:
+                recurring_start_date = st.date_input("Start Date", value=date.today())
+            with col6:
+                recurring_end_date = st.date_input("End Date (Optional)", value=None)
+            
+            # Averaging option for quarterly/yearly
+            if recurring_frequency in ['quarterly', 'yearly']:
+                recurring_averaging = st.selectbox(
+                    "Averaging Type",
+                    options=['none', 'monthly'],
+                    format_func=lambda x: 'No Averaging' if x == 'none' else 'Average Monthly',
+                    help="For yearly/quarterly expenses, you can average them into monthly amounts for better budgeting"
+                )
+            else:
+                recurring_averaging = 'none'
+            
+            recurring_description = st.text_area("Description (optional)")
+            
+            if st.form_submit_button("💾 Add Recurring Expense"):
+                try:
+                    if not recurring_name.strip():
+                        st.error("Name is required")
+                    elif not recurring_merchant.strip():
+                        st.error("Merchant is required")
+                    elif recurring_amount <= 0:
+                        st.error("Amount must be greater than 0")
+                    else:
+                        recurring_data = {
+                            "name": recurring_name,
+                            "merchant": recurring_merchant,
+                            "amount": recurring_amount,
+                            "category": recurring_category,
+                            "payment_method": recurring_payment_method,
+                            "frequency": recurring_frequency,
+                            "start_date": recurring_start_date,
+                            "end_date": recurring_end_date,
+                            "averaging_type": recurring_averaging,
+                            "description": recurring_description
+                        }
+                        
+                        recurring_id = add_recurring_expense(user_id, recurring_data)
+                        st.success("✅ Recurring expense added successfully!")
+                        time.sleep(1)
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"Error adding recurring expense: {str(e)}")
+    
+    # Suggestions tab
+    with recurring_tabs[2]:
+        st.markdown("### 💡 Recurring Expense Suggestions")
+        st.info("Based on your spending patterns, we've identified potential recurring expenses:")
+        
+        if not suggestions:
+            st.info("No suggestions available. Add more expenses to see patterns!")
+        else:
+            for suggestion in suggestions:
+                with st.expander(f"{suggestion['merchant']} - ¥{suggestion['amount']:,.0f} ({suggestion['frequency']}) - {suggestion['confidence']:.0%} confidence"):
+                    col1, col2 = st.columns([2, 1])
+                    
+                    with col1:
+                        st.write(f"**Merchant:** {suggestion['merchant']}")
+                        st.write(f"**Amount:** ¥{suggestion['amount']:,.0f}")
+                        st.write(f"**Suggested Frequency:** {suggestion['frequency'].title()}")
+                        st.write(f"**Category:** {suggestion['category']}")
+                        st.write(f"**Occurrences:** {suggestion['occurrences']}")
+                        st.write(f"**Confidence:** {suggestion['confidence']:.0%}")
+                    
+                    with col2:
+                        if st.button("➕ Add as Recurring", key=f"add_suggestion_{suggestion['merchant']}_{suggestion['amount']}"):
+                            recurring_data = {
+                                "name": f"{suggestion['merchant']} - {suggestion['frequency'].title()}",
+                                "merchant": suggestion['merchant'],
+                                "amount": suggestion['amount'],
+                                "category": suggestion['category'],
+                                "payment_method": suggestion['payment_method'],
+                                "frequency": suggestion['frequency'],
+                                "start_date": date.today(),
+                                "end_date": None,
+                                "averaging_type": 'monthly' if suggestion['frequency'] in ['quarterly', 'yearly'] else 'none',
+                                "description": f"Auto-created from pattern analysis"
+                            }
+                            
+                            try:
+                                recurring_id = add_recurring_expense(user_id, recurring_data)
+                                st.success("✅ Recurring expense added!")
+                                time.sleep(1)
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error adding recurring expense: {str(e)}")
+
 # ---------- Coffee ----------
 import streamlit.components.v1 as components  # Add this at the top if not already imported
 
-with tab7:
+with tab8:
     st.header("☕️ Coffee")
 
     st.markdown("If you find this app useful, feel free to buy me a flat white with an extra espresso! 🙏")
