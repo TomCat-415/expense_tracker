@@ -661,4 +661,109 @@ def suggest_recurring_expenses(user_id: str) -> List[Dict]:
     except Exception as e:
         logger.error(f"Error suggesting recurring expenses: {str(e)}")
         return []
+
+
+# =============================================
+# EXPENSE AVERAGING FUNCTIONS
+# =============================================
+
+def calculate_monthly_equivalent(amount: float, frequency: str) -> float:
+    """Calculate the monthly equivalent of an expense based on frequency."""
+    frequency_multipliers = {
+        'monthly': 1.0,
+        'quarterly': 1.0 / 3.0,  # Quarterly = every 3 months
+        'yearly': 1.0 / 12.0     # Yearly = every 12 months
+    }
+    return amount * frequency_multipliers.get(frequency, 1.0)
+
+def get_averaging_expenses(user_id: str) -> List[Dict]:
+    """Get all expenses that should be averaged (from recurring expenses with averaging enabled)."""
+    try:
+        # Get recurring expenses with averaging enabled
+        result = supabase.table("recurring_expenses").select("*").eq("user_id", user_id).eq("averaging_type", "monthly").execute()
+        
+        recurring_with_averaging = []
+        for recurring in result.data:
+            monthly_amount = calculate_monthly_equivalent(recurring['amount'], recurring['frequency'])
+            recurring_with_averaging.append({
+                'id': recurring['id'],
+                'name': recurring['name'],
+                'merchant': recurring['merchant'],
+                'category': recurring['category'],
+                'original_amount': recurring['amount'],
+                'monthly_amount': monthly_amount,
+                'frequency': recurring['frequency']
+            })
+        
+        return recurring_with_averaging
+        
+    except Exception as e:
+        logger.error(f"Error getting averaging expenses: {str(e)}")
+        return []
+
+def apply_expense_averaging(df: pd.DataFrame, user_id: str, include_averaging: bool = False) -> pd.DataFrame:
+    """Apply averaging to expenses dataframe if requested."""
+    if not include_averaging or df.empty:
+        return df
+    
+    try:
+        # Get expenses that should be averaged
+        averaging_expenses = get_averaging_expenses(user_id)
+        if not averaging_expenses:
+            return df
+        
+        # Create a copy to avoid modifying the original
+        averaged_df = df.copy()
+        
+        # Get date range for averaging
+        min_date = pd.to_datetime(df['date'].min())
+        max_date = pd.to_datetime(df['date'].max())
+        
+        # For each averaging expense, find actual payments and replace with monthly amounts
+        for avg_expense in averaging_expenses:
+            # Find expenses that match this recurring expense
+            matching_expenses = averaged_df[
+                (averaged_df['merchant'] == avg_expense['merchant']) &
+                (averaged_df['category'] == avg_expense['category']) &
+                (averaged_df['amount'] == avg_expense['original_amount'])
+            ]
+            
+            if not matching_expenses.empty:
+                # Remove the original large payments
+                averaged_df = averaged_df.drop(matching_expenses.index)
+                
+                # Add monthly averaged payments for each month in the range
+                current_date = min_date.replace(day=1)  # Start from first day of month
+                
+                while current_date <= max_date:
+                    # Add averaged payment for this month
+                    averaged_payment = {
+                        'date': current_date,
+                        'merchant': avg_expense['merchant'],
+                        'category': avg_expense['category'],
+                        'amount': avg_expense['monthly_amount'],
+                        'description': f"[Averaged] {avg_expense['name']}",
+                        'payment_method': matching_expenses.iloc[0]['payment_method'] if not matching_expenses.empty else 'Other',
+                        'user_id': user_id,
+                        'recurring_id': avg_expense['id']
+                    }
+                    
+                    # Add to dataframe
+                    new_row_df = pd.DataFrame([averaged_payment])
+                    averaged_df = pd.concat([averaged_df, new_row_df], ignore_index=True)
+                    
+                    # Move to next month
+                    if current_date.month == 12:
+                        current_date = current_date.replace(year=current_date.year + 1, month=1)
+                    else:
+                        current_date = current_date.replace(month=current_date.month + 1)
+        
+        # Sort by date
+        averaged_df = averaged_df.sort_values('date').reset_index(drop=True)
+        
+        return averaged_df
+        
+    except Exception as e:
+        logger.error(f"Error applying expense averaging: {str(e)}")
+        return df
         

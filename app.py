@@ -36,7 +36,11 @@ from utils.database import (
     get_due_recurring_expenses,
     generate_expense_from_recurring,
     suggest_recurring_expenses,
-    calculate_next_due_date
+    calculate_next_due_date,
+    # Averaging functions
+    calculate_monthly_equivalent,
+    get_averaging_expenses,
+    apply_expense_averaging
 )
 from utils.ocr import extract_text_from_image, process_receipt
 from utils.charts import (
@@ -329,8 +333,46 @@ with tab1:
             st.warning("⚠️ All categories are excluded. Please enable at least one category to view analytics.")
             st.stop()
         
-        # Use filtered dataframe for all calculations
-        df_to_use = filtered_df
+        # ==================== AVERAGING TOGGLE ====================
+        st.markdown("---")
+        
+        # Check if user has any averaging expenses set up
+        averaging_expenses = get_averaging_expenses(user_id)
+        
+        if averaging_expenses:
+            st.markdown("### 📊 View Mode")
+            
+            # Show info about averaging
+            avg_info = f"📈 **{len(averaging_expenses)} expenses** are set up for averaging"
+            for exp in averaging_expenses:
+                avg_info += f"\n• {exp['name']}: ¥{exp['original_amount']:,} ({exp['frequency']}) → ¥{exp['monthly_amount']:,.0f}/month"
+            
+            with st.expander("ℹ️ About Averaging", expanded=False):
+                st.markdown(avg_info)
+                st.markdown("**Actual View**: Shows real payments when they happened (spikes)")
+                st.markdown("**Averaged View**: Shows smooth monthly budgeting amounts")
+            
+            # Toggle between actual and averaged view
+            view_mode = st.radio(
+                "Choose view mode:",
+                ["📅 Actual Payments", "📊 Averaged Budgeting"],
+                horizontal=True,
+                help="Switch between actual payment dates and smooth monthly averages"
+            )
+            
+            use_averaging = view_mode == "📊 Averaged Budgeting"
+            
+            # Apply averaging if selected
+            if use_averaging:
+                df_to_use = apply_expense_averaging(filtered_df, user_id, include_averaging=True)
+                st.info("💡 **Averaged View**: Large periodic payments are spread evenly across months for better budgeting")
+            else:
+                df_to_use = filtered_df
+                st.info("💡 **Actual View**: Showing real payment dates and amounts")
+        else:
+            df_to_use = filtered_df
+            st.info("💡 **Tip**: Set up recurring expenses with averaging to see smooth monthly budgeting views")
+        
         # Make sure date is datetime
         df_to_use['date'] = pd.to_datetime(df_to_use['date'])
 
@@ -352,7 +394,16 @@ with tab1:
 
         # KPI Columns: Monthly, Weekly, Daily Average, Yearly
         kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-        filter_suffix = f" (filtered)" if excluded_categories else ""
+        
+        # Create suffix based on filters and averaging
+        suffix_parts = []
+        if excluded_categories:
+            suffix_parts.append("filtered")
+        if averaging_expenses and 'use_averaging' in locals() and use_averaging:
+            suffix_parts.append("averaged")
+        
+        filter_suffix = f" ({', '.join(suffix_parts)})" if suffix_parts else ""
+        
         with kpi1:
             st.metric("Monthly Spending" + filter_suffix, f"¥{monthly_spending:,.0f}")
         with kpi2:
@@ -774,177 +825,272 @@ with tab4:
     if df.empty:
         st.info("No expenses to display.")
     else:
-        search = st.text_input(
-            "🔍 Search expenses",
-            value=st.session_state.search_query,
-            help="Search by merchant, category, or description"
-        )
+        # Clean search and filter section
+        st.markdown("### 🔍 Search & Filter")
+        
+        col_search, col_filter = st.columns([3, 1])
+        with col_search:
+            search = st.text_input(
+                "🔍 Search expenses",
+                value=st.session_state.search_query,
+                help="Search by merchant, category, or description",
+                placeholder="Type to search merchants, categories, or descriptions..."
+            )
+        with col_filter:
+            # Find the index of the current expenses_per_page value
+            page_options = [10, 20, 50, 100]
+            try:
+                current_index = page_options.index(st.session_state.expenses_per_page)
+            except ValueError:
+                current_index = 1  # Default to 20 if not found
+            
+            st.session_state.expenses_per_page = st.selectbox(
+                "Show per page",
+                options=page_options,
+                index=current_index,
+                key="items_per_page"
+            )
+        
         if search != st.session_state.search_query:
             st.session_state.search_query = search
             st.session_state.page_number = 1
             st.rerun()
+            
+        # Apply search filter
+        filtered_df = df.copy()
         if search:
             search_lower = search.lower()
-            df = df[
-                df['merchant'].str.lower().str.contains(search_lower) |
-                df['category'].str.lower().str.contains(search_lower) |
-                df['description'].str.lower().str.contains(search_lower, na=False)
+            filtered_df = filtered_df[
+                filtered_df['merchant'].str.lower().str.contains(search_lower) |
+                filtered_df['category'].str.lower().str.contains(search_lower) |
+                filtered_df['description'].str.lower().str.contains(search_lower, na=False)
             ]
-        st.markdown("### 🧾 Your Expenses")
-        total_pages = max(1, -(-len(df) // st.session_state.expenses_per_page))
+        
+        # Group by date and paginate by days instead of individual expenses
+        filtered_df['date'] = pd.to_datetime(filtered_df['date'])
+        daily_groups = filtered_df.groupby(filtered_df['date'].dt.date).apply(lambda x: x.sort_values('date')).reset_index(drop=True)
+        unique_dates = sorted(filtered_df['date'].dt.date.unique(), reverse=True)
+        
+        # Pagination by days
+        days_per_page = 7  # Show 7 days per page
+        total_pages = max(1, -(-len(unique_dates) // days_per_page))
+        
+        # Clean pagination controls
         if total_pages > 1:
-            col1, col2, col3 = st.columns([2, 3, 2])
+            st.markdown("### 📄 Navigation")
+            
+            col1, col2, col3, col4, col5 = st.columns([1, 1, 2, 1, 1])
+            
+            with col1:
+                if st.button("⏮️ First", disabled=st.session_state.page_number == 1, type="primary"):
+                    st.session_state.page_number = 1
+                    st.rerun()
+            
             with col2:
-                page_nums = st.select_slider(
+                if st.button("◀️ Previous", disabled=st.session_state.page_number == 1, type="primary"):
+                    st.session_state.page_number = max(1, st.session_state.page_number - 1)
+                    st.rerun()
+            
+            with col3:
+                # Page number selector
+                page_options = list(range(1, total_pages + 1))
+                current_page_index = min(st.session_state.page_number, total_pages) - 1  # Convert to 0-based index
+                
+                current_page = st.selectbox(
                     "Page",
-                    options=range(1, total_pages + 1),
-                    value=min(st.session_state.page_number, total_pages),
-                    key="page_slider"
+                    options=page_options,
+                    index=current_page_index,
+                    key="page_selector",
+                    format_func=lambda x: f"Page {x} of {total_pages}"
                 )
-                if page_nums != st.session_state.page_number:
-                    st.session_state.page_number = page_nums
+                if current_page != st.session_state.page_number:
+                    st.session_state.page_number = current_page
+                    st.rerun()
+            
+            with col4:
+                if st.button("Next ▶️", disabled=st.session_state.page_number == total_pages, type="primary"):
+                    st.session_state.page_number = min(total_pages, st.session_state.page_number + 1)
+                    st.rerun()
+            
+            with col5:
+                if st.button("Last ⏭️", disabled=st.session_state.page_number == total_pages, type="primary"):
+                    st.session_state.page_number = total_pages
                     st.rerun()
         else:
             st.session_state.page_number = 1
-        start_idx = (st.session_state.page_number - 1) * st.session_state.expenses_per_page
-        end_idx = min(start_idx + st.session_state.expenses_per_page, len(df))
-        page_expenses = df.iloc[start_idx:end_idx]
-        total_count = len(df)
-        if total_count > 0:
-            st.markdown(f"Showing {start_idx + 1}-{end_idx} of {total_count} expense{'s' if total_count != 1 else ''}")
-        for _, row in page_expenses.iterrows():
-            edit_key = f"edit_{row['id']}"
-            confirm_key = f"confirm_{row['id']}"
-            delete_key = f"delete_{row['id']}"
-            confirm_delete = st.session_state.get(confirm_key, False)
-            is_editing = st.session_state.get(edit_key, False)
-            if not is_editing:
-                cols = st.columns([4, 1, 1])
-                with cols[0]:
-                    st.markdown(
-                        f"📅 **{row['date'].strftime('%Y-%m-%d')}** &nbsp;&nbsp; "
-                        f"🏪 **{row['merchant']}** &nbsp;&nbsp; "
-                        f"💴 **¥{row['amount']:,.0f}** &nbsp;&nbsp; "
-                        f"🗂️ {row['category']} &nbsp;&nbsp; "
-                        f"💳 {row['payment_method'] or '—'} &nbsp;&nbsp; "
-                        f"📝 {row['description'] or ''}",
-                        unsafe_allow_html=True
-                    )
-                with cols[1]:
-                    if st.button("✏️ Edit", key=f"edit_btn_{row['id']}"):
-                        st.session_state[edit_key] = True
-                        st.rerun()
-                with cols[2]:
-                    if not confirm_delete:
-                        if st.button("🗑️ Delete", key=delete_key):
-                            st.session_state[confirm_key] = True
-                            st.rerun()
-                    else:
-                        st.warning("Are you sure you want to delete this expense?")
-                        col_confirm, col_cancel = st.columns([1, 1])
-                        with col_confirm:
-                            if st.button("✅ Yes", key=f"yes_{row['id']}"):
-                                try:
-                                    with st.spinner("Deleting expense..."):
-                                        delete_expense(user_id, row['id'])
-                                        del st.session_state[confirm_key]
-                                        show_success("Expense deleted successfully!")
-                                        st.rerun()
-                                except DatabaseError as e:
-                                    show_error(f"Error deleting expense: {str(e)}")
-                        with col_cancel:
-                            if st.button("❌ No", key=f"cancel_{row['id']}"):
-                                del st.session_state[confirm_key]
-                                st.rerun()
-            else:
-                with st.form(key=f"edit_form_{row['id']}"):
-                    st.markdown("### ✏️ Edit Expense")
-                    edited_date = st.date_input(
-                        "Date",
-                        value=row['date'].date(),
-                        help="Select the date of the expense"
-                    )
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        edited_amount = st.number_input(
-                            "Amount (¥)",
-                            value=float(row['amount']),
-                            min_value=0.0,
-                            step=100.0,
-                            help="Enter the expense amount"
-                        )
-                    with col2:
-                        edited_merchant = st.text_input(
-                            "Merchant",
-                            value=row['merchant'],
-                            help="Enter the name of the merchant or store"
-                        )
-                    col3, col4 = st.columns(2)
-                    with col3:
-                        # Get user's available categories
-                        available_categories = get_available_categories(user_id)
-                        # Find the index of the current category
-                        try:
-                            current_index = available_categories.index(row['category'])
-                        except ValueError:
-                            current_index = 0
+        
+        # Get dates for current page
+        start_day_idx = (st.session_state.page_number - 1) * days_per_page
+        end_day_idx = min(start_day_idx + days_per_page, len(unique_dates))
+        page_dates = unique_dates[start_day_idx:end_day_idx]
+        
+        # Display summary with better styling
+        total_expenses = len(filtered_df)
+        if total_expenses > 0:
+            st.markdown(f"""
+            <div style="background: rgba(78, 205, 196, 0.1); 
+                        border-radius: 8px; 
+                        padding: 10px 15px; 
+                        margin: 10px 0; 
+                        border-left: 4px solid #4ECDC4;">
+                <strong>📊 Showing {len(page_dates)} day{'s' if len(page_dates) != 1 else ''} • {total_expenses} total expense{'s' if total_expenses != 1 else ''}</strong>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Display expenses grouped by day
+        for date in page_dates:
+            daily_expenses = filtered_df[filtered_df['date'].dt.date == date]
+            daily_total = daily_expenses['amount'].sum()
+            
+            # Day header with total
+            st.markdown(f"""
+            <div style="background: linear-gradient(90deg, #4ECDC4 0%, #44A08D 100%); 
+                        color: white; 
+                        padding: 12px 20px; 
+                        border-radius: 10px; 
+                        margin: 20px 0 10px 0;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <h3 style="margin: 0; font-size: 18px;">
+                    📅 {date.strftime('%A, %B %d, %Y')} 
+                    <span style="float: right; font-weight: normal;">
+                        💰 ¥{daily_total:,.0f} ({len(daily_expenses)} expense{'s' if len(daily_expenses) != 1 else ''})
+                    </span>
+                </h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Display each expense for this day
+            for _, row in daily_expenses.iterrows():
+                edit_key = f"edit_{row['id']}"
+                confirm_key = f"confirm_{row['id']}"
+                delete_key = f"delete_{row['id']}"
+                confirm_delete = st.session_state.get(confirm_key, False)
+                is_editing = st.session_state.get(edit_key, False)
+                
+                if not is_editing:
+                    # Create a card-like layout for each expense
+                    with st.container():
+                        st.markdown(f"""
+                        <div style="background: rgba(255,255,255,0.05); 
+                                    border-left: 4px solid #4ECDC4; 
+                                    padding: 15px; 
+                                    margin: 8px 0; 
+                                    border-radius: 8px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <span style="font-size: 16px; font-weight: bold;">🏪 {row['merchant']}</span>
+                                    <span style="margin-left: 15px; font-size: 18px; color: #4ECDC4; font-weight: bold;">¥{row['amount']:,.0f}</span>
+                                </div>
+                                <div style="text-align: right; font-size: 14px; color: #888;">
+                                    🗂️ {row['category']} • 💳 {row['payment_method'] or '—'}
+                                </div>
+                            </div>
+                            {f'<div style="margin-top: 8px; font-size: 14px; color: #666;">📝 {row["description"]}</div>' if row['description'] else ''}
+                        </div>
+                        """, unsafe_allow_html=True)
                         
-                        edited_category = st.selectbox(
-                            "Category",
-                            options=available_categories,
-                            index=current_index,
-                            help="Select the expense category"
-                        )
-                    with col4:
-                        edited_payment_method = st.selectbox(
-                            "Payment Method",
-                            options=["Credit Card", "Debit Card", "Cash", "Digital Wallet", "Other"],
-                            index=["Credit Card", "Debit Card", "Cash", "Digital Wallet", "Other"].index(row['payment_method']) if row['payment_method'] in ["Credit Card", "Debit Card", "Cash", "Digital Wallet", "Other"] else 0,
-                            help="Select the payment method used"
-                        )
-                    edited_description = st.text_area(
-                        "Description (optional)",
-                        value=row['description'] if row['description'] else "",
-                        help="Add any additional notes about the expense"
-                    )
-                    col5, col6 = st.columns(2)
-                    with col5:
-                        if st.form_submit_button("💾 Save Changes"):
-                            try:
-                                if not edited_merchant.strip():
-                                    raise ValidationError("Merchant name is required")
-                                if edited_amount <= 0:
-                                    raise ValidationError("Amount must be greater than 0")
-                                expense_data = {
-                                    "date": edited_date,
-                                    "merchant": edited_merchant.strip(),
-                                    "amount": edited_amount,
-                                    "category": edited_category,
-                                    "description": edited_description.strip(),
-                                    "payment_method": edited_payment_method,
-                                    "receipt_path": row['receipt_path'] if 'receipt_path' in row else None
-                                }
-                                update_expense(user_id, row['id'], expense_data)
+                        # Action buttons
+                        col1, col2 = st.columns([6, 1])
+                        with col2:
+                            btn_col1, btn_col2 = st.columns(2)
+                            with btn_col1:
+                                if st.button("✏️", key=f"edit_btn_{row['id']}", help="Edit expense"):
+                                    st.session_state[edit_key] = True
+                                    st.rerun()
+                            with btn_col2:
+                                if not confirm_delete:
+                                    if st.button("🗑️", key=delete_key, help="Delete expense"):
+                                        st.session_state[confirm_key] = True
+                                        st.rerun()
+                                else:
+                                    if st.button("✅", key=f"yes_{row['id']}", help="Confirm delete"):
+                                        try:
+                                            with st.spinner("Deleting expense..."):
+                                                delete_expense(user_id, row['id'])
+                                                del st.session_state[confirm_key]
+                                                show_success("Expense deleted successfully!")
+                                                st.rerun()
+                                        except DatabaseError as e:
+                                            show_error(f"Error deleting expense: {str(e)}")
+                        
+                        # Confirm delete warning
+                        if confirm_delete:
+                            st.warning("⚠️ Are you sure you want to delete this expense?")
+                            col_cancel, col_space = st.columns([1, 3])
+                            with col_cancel:
+                                if st.button("❌ Cancel", key=f"cancel_{row['id']}"):
+                                    del st.session_state[confirm_key]
+                                    st.rerun()
+                
+                else:
+                    # Edit mode
+                    st.markdown(f"### ✏️ Edit Expense")
+                    with st.form(f"edit_form_{row['id']}"):
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            edited_date = st.date_input("Date", value=row['date'].date())
+                            edited_merchant = st.text_input("Merchant", value=row['merchant'])
+                            edited_amount = st.number_input("Amount (¥)", min_value=0.0, value=float(row['amount']), step=100.0)
+                        with col2:
+                            available_categories = get_available_categories(user_id)
+                            edited_category = st.selectbox("Category", options=available_categories, index=available_categories.index(row['category']) if row['category'] in available_categories else 0)
+                            edited_payment_method = st.selectbox("Payment Method", options=["Credit Card", "Debit Card", "Cash", "Digital Wallet", "Other"], index=0 if not row['payment_method'] else ["Credit Card", "Debit Card", "Cash", "Digital Wallet", "Other"].index(row['payment_method']) if row['payment_method'] in ["Credit Card", "Debit Card", "Cash", "Digital Wallet", "Other"] else 0)
+                            edited_description = st.text_input("Description", value=row['description'] if row['description'] else "")
+                        
+                        col5, col6 = st.columns(2)
+                        with col5:
+                            if st.form_submit_button("💾 Save Changes"):
+                                try:
+                                    if not edited_merchant.strip():
+                                        raise ValidationError("Merchant name is required")
+                                    if edited_amount <= 0:
+                                        raise ValidationError("Amount must be greater than 0")
+                                    expense_data = {
+                                        "date": edited_date,
+                                        "merchant": edited_merchant.strip(),
+                                        "amount": edited_amount,
+                                        "category": edited_category,
+                                        "description": edited_description.strip(),
+                                        "payment_method": edited_payment_method,
+                                        "receipt_path": row['receipt_path'] if 'receipt_path' in row else None
+                                    }
+                                    update_expense(user_id, row['id'], expense_data)
+                                    del st.session_state[edit_key]
+                                    show_success("✅ Expense updated successfully!")
+                                    st.rerun()
+                                except (ValidationError, DatabaseError) as e:
+                                    show_error(str(e))
+                        with col6:
+                            if st.form_submit_button("❌ Cancel"):
                                 del st.session_state[edit_key]
-                                show_success("✅ Expense updated successfully!")
                                 st.rerun()
-                            except (ValidationError, DatabaseError) as e:
-                                show_error(str(e))
-                    with col6:
-                        if st.form_submit_button("❌ Cancel"):
-                            del st.session_state[edit_key]
-                            st.rerun()
 
+        # Summary section with cleaner styling
         st.markdown("---")
-
-        # Download button
-        csv = df.to_csv(index=False)
+        st.markdown("### 📊 Summary")
+        
+        # Summary statistics
+        if not filtered_df.empty:
+            total_amount = filtered_df['amount'].sum()
+            avg_daily = filtered_df.groupby(filtered_df['date'].dt.date)['amount'].sum().mean()
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("📊 Total Amount", f"¥{total_amount:,.0f}")
+            with col2:
+                st.metric("📈 Daily Average", f"¥{avg_daily:,.0f}")
+            with col3:
+                st.metric("📅 Days with Expenses", f"{len(unique_dates)}")
+        
+        # Download button with better styling
+        csv = filtered_df.to_csv(index=False)
         st.download_button(
-            label="📥 Download CSV",
+            label="📥 Download Filtered Expenses",
             data=csv,
-            file_name="expenses.csv",
+            file_name="expenses_filtered.csv",
             mime="text/csv",
-            help="Download all filtered expenses as CSV"
+            help="Download all filtered expenses as CSV",
+            type="primary"
         )
 
 # ---------- Enhanced Analytics ----------
@@ -1809,11 +1955,22 @@ with tab7:
             
             # Averaging option for quarterly/yearly
             if recurring_frequency in ['quarterly', 'yearly']:
+                st.markdown("**💡 Averaging Example:**")
+                
+                # Calculate example amounts
+                if recurring_amount > 0:
+                    monthly_equiv = calculate_monthly_equivalent(recurring_amount, recurring_frequency)
+                    example_text = f"¥{recurring_amount:,.0f} {recurring_frequency} = ¥{monthly_equiv:,.0f} per month"
+                else:
+                    example_text = "Enter an amount to see the monthly equivalent"
+                
+                st.info(f"📊 {example_text}")
+                
                 recurring_averaging = st.selectbox(
                     "Averaging Type",
                     options=['none', 'monthly'],
-                    format_func=lambda x: 'No Averaging' if x == 'none' else 'Average Monthly',
-                    help="For yearly/quarterly expenses, you can average them into monthly amounts for better budgeting"
+                    format_func=lambda x: 'Show as actual payments' if x == 'none' else 'Average across months',
+                    help="Choose whether to show large payments as spikes or spread them evenly for budgeting"
                 )
             else:
                 recurring_averaging = 'none'
