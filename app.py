@@ -1027,9 +1027,9 @@ import streamlit.components.v1 as components  # Add this at the top if not alrea
 with tab7:
     st.header("☕️ Coffee")
 
-    st.markdown("If you find this app useful, you can buy me a coffee! 🙏")
+    st.markdown("If you find this app useful, feel free to buy me a flat white with an extra espresso! 🙏")
 
-    COFFEE_PRICE = 1000  # Yen
+    COFFEE_PRICE = 100  # Yen
 
     def create_checkout_session():
         session = stripe_client.stripe.checkout.Session.create(
@@ -1048,7 +1048,7 @@ with tab7:
         )
         return session.url
 
-    if st.button("Buy Me a Coffee (¥1000)"):
+    if st.button("Buy Me a Coffee (¥100)"):
         url = create_checkout_session()
         st.success("Redirecting you to Stripe Checkout...")
 
