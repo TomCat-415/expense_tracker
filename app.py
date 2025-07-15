@@ -75,8 +75,36 @@ clear_all_caches()
 st.markdown("""
 <style>
     .stTabs [data-baseweb="tab"]:hover {
-        border-bottom: 2px solid #ff4b4b;
+        border-bottom: 2px solid #4ECDC4;
         transition: all 0.3s ease;
+    }
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        border-bottom: 2px solid #4ECDC4;
+        color: #4ECDC4;
+    }
+    .stSelectbox > div > div > div {
+        background-color: rgba(78, 205, 196, 0.1);
+    }
+    .stButton > button {
+        background-color: #4ECDC4;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        transition: all 0.3s ease;
+    }
+    .stButton > button:hover {
+        background-color: #3BB5A8;
+        transform: translateY(-2px);
+    }
+    .stButton > button[kind="primary"] {
+        background-color: #4ECDC4;
+        color: white;
+    }
+    .stButton > button[kind="primary"]:hover {
+        background-color: #3BB5A8;
+    }
+    .stMetric > div > div > div > div {
+        color: #4ECDC4;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -106,8 +134,10 @@ def switch_auth_mode():
     st.session_state.auth_mode = "signup" if st.session_state.auth_mode == "login" else "login"
 
 def login():
-    st.title("🧙‍♂️ Expensei")
-    st.caption("Let Expensei guide your money journey!")
+    # Display logo
+    st.markdown('<div style="margin-left: -20px;">', unsafe_allow_html=True)
+    st.image("logo.png", width=600)
+    st.markdown('</div>', unsafe_allow_html=True)
     
     st.header("🔐 Login")
     with st.form("login_form", clear_on_submit=False):
@@ -139,8 +169,10 @@ def login():
             st.form_submit_button("Don't have an account? Sign Up", on_click=switch_auth_mode, use_container_width=True)
 
 def signup():
-    st.title("🧙‍♂️ Expensei")
-    st.caption("Say hello to your Expense Sensei!")
+    # Display logo
+    st.markdown('<div style="margin-left: -20px;">', unsafe_allow_html=True)
+    st.image("logo.png", width=600)
+    st.markdown('</div>', unsafe_allow_html=True)
     
     st.header("📝 Sign Up")
     email = st.text_input("Email", key="signup_email")
@@ -183,8 +215,10 @@ if st.session_state.user is None:
     st.stop()
 
 # 3. User is authenticated: show main app
-st.markdown("<h1 style='font-size: 3em;'>🧙‍♂️ Expensei</h1>", unsafe_allow_html=True)
-st.markdown("<h2 style='font-size: 1.5em; color: #666;'>Let Expensei guide your money journey!</h2>", unsafe_allow_html=True)
+# Display logo
+st.markdown('<div style="margin-left: -20px;">', unsafe_allow_html=True)
+st.image("logo.png", width=600)
+st.markdown('</div>', unsafe_allow_html=True)
 
 # Sidebar
 with st.sidebar:
