@@ -61,6 +61,16 @@ st.cache_data.clear()
 # ---- Streamlit Page Config ----
 st.set_page_config(**STREAMLIT_CONFIG)
 
+# Force cache clear on app start to ensure fresh data
+def clear_all_caches():
+    """Clear all cached data."""
+    st.cache_data.clear()
+    if hasattr(st, 'cache_resource'):
+        st.cache_resource.clear()
+
+# Clear cache on startup
+clear_all_caches()
+
 # Add custom styles and JavaScript
 st.markdown("""
 <style>
@@ -325,7 +335,7 @@ with tab1:
         
         col1, col2 = st.columns(2)
         with col1:
-            st.plotly_chart(create_spending_by_category_pie(df.to_dict('records')), use_container_width=True, key="dashboard_category_pie")
+            st.plotly_chart(create_spending_by_category_pie(df.to_dict('records'), user_id=user_id), use_container_width=True, key="dashboard_category_pie")
         with col2:
             st.plotly_chart(create_top_merchants_chart(df), use_container_width=True, key="dashboard_merchants")
         st.plotly_chart(create_monthly_average_chart(df), use_container_width=True, key="monthly_average")
@@ -358,23 +368,39 @@ with tab2:
             )
         with col2:
             merchant_options = sorted(df['merchant'].dropna().unique().tolist())
-            merchant_input = st.text_input(
-                "Merchant",
-                value="",
-                placeholder="Type to search or enter new",
-                help="Type the merchant name (autocomplete supported)",
+            
+            # Field 1: Select from existing merchants
+            selected_existing = st.selectbox(
+                "Select existing merchant:",
+                options=[""] + merchant_options,
+                index=0,
+                help="Type to search or select from saved merchants",
+                key="existing_merchant_selectbox"
             )
-
-            # Case-insensitive match for existing options
-            match = next((m for m in merchant_options if m.lower() == merchant_input.lower()), None)
-            merchant = match if match else merchant_input.strip()
+            
+            # Field 2: Add new merchant
+            new_merchant_input = st.text_input(
+                "Or add new merchant:",
+                value="",
+                placeholder="Type new merchant name...",
+                help="Enter a new merchant name",
+                key="new_merchant_textinput"
+            )
+            
+            # Determine which merchant to use
+            if new_merchant_input.strip():
+                merchant = new_merchant_input.strip()
+            else:
+                merchant = selected_existing
 
         # Category and payment method in same row
         col3, col4 = st.columns(2)
         with col3:
+            # Get user's available categories
+            available_categories = get_available_categories(user_id)
             category = st.selectbox(
                 "Category",
-                options=list(DEFAULT_CATEGORIES.keys()),
+                options=available_categories,
                 help="Select the expense category"
             )
         with col4:
@@ -502,9 +528,11 @@ with tab3:
                                 st.metric("Amount Confidence", f"{extracted_data.amount_confidence:.0%}")
                             cat_col, pay_col = st.columns(2)
                             with cat_col:
+                                # Get user's available categories
+                                available_categories = get_available_categories(user_id)
                                 category = st.selectbox(
                                     "Category",
-                                    list(DEFAULT_CATEGORIES.keys()),
+                                    available_categories,
                                     help="Select the expense category"
                                 )
                             with pay_col:
@@ -696,10 +724,18 @@ with tab4:
                         )
                     col3, col4 = st.columns(2)
                     with col3:
+                        # Get user's available categories
+                        available_categories = get_available_categories(user_id)
+                        # Find the index of the current category
+                        try:
+                            current_index = available_categories.index(row['category'])
+                        except ValueError:
+                            current_index = 0
+                        
                         edited_category = st.selectbox(
                             "Category",
-                            options=list(DEFAULT_CATEGORIES.keys()),
-                            index=list(DEFAULT_CATEGORIES.keys()).index(row['category']) if row['category'] in DEFAULT_CATEGORIES else 0,
+                            options=available_categories,
+                            index=current_index,
                             help="Select the expense category"
                         )
                     with col4:
@@ -796,10 +832,12 @@ with tab5:
         
         # Categories Tab
         with analysis_tabs[3]:
-            categories = ["All"] + list(DEFAULT_CATEGORIES.keys())
+            # Get user's available categories
+            available_categories = get_available_categories(user_id)
+            categories = ["All"] + available_categories
             selected_category = st.selectbox("Select Category", categories)
             if selected_category == "All":
-                st.plotly_chart(create_category_trend_chart(df), use_container_width=True)
+                st.plotly_chart(create_category_trend_chart(df, user_id=user_id), use_container_width=True)
             else:
                 st.plotly_chart(create_spending_trend(df.to_dict('records'), category_filter=selected_category), use_container_width=True)
 
@@ -865,6 +903,411 @@ with tab6:
     
     with settings_tab2:
         st.markdown("### 🏷️ Category Management")
+        
+        # Category Presets Section
+        st.markdown("### 🎯 Category Presets")
+        st.info("Choose a category style that fits your lifestyle. You can still customize it later!")
+        
+        # Define the presets
+        CATEGORY_PRESETS = {
+            "Minimalist Mode": {
+                "description": "Core essentials only — 8 categories max",
+                "ideal_for": "busy users, new budgeters, folks who hate clutter",
+                "categories": {
+                    "🏠 Housing": "#FF6B6B",
+                    "🍽 Food & Dining": "#4ECDC4", 
+                    "🚗 Transportation": "#45B7D1",
+                    "💡 Utilities": "#FFA07A",
+                    "🛍 Shopping": "#98D8C8",
+                    "🎭 Entertainment": "#F7DC6F",
+                    "🌱 Health & Wellness": "#BB8FCE",
+                    "🌀 Miscellaneous": "#747D8C"
+                },
+                "_metadata": {
+                    "categories": {
+                        "🏠 Housing": {
+                            "color": "#FF6B6B",
+                            "keywords": ["rent", "mortgage", "maintenance", "repair", "furniture", "home"]
+                        },
+                        "🍽 Food & Dining": {
+                            "color": "#4ECDC4",
+                            "keywords": ["restaurant", "cafe", "coffee", "dining", "food", "takeout", "starbucks"]
+                        },
+                        "🚗 Transportation": {
+                            "color": "#45B7D1",
+                            "keywords": ["train", "bus", "taxi", "parking", "gas", "toll", "suica", "pasmo", "uber"]
+                        },
+                        "💡 Utilities": {
+                            "color": "#FFA07A",
+                            "keywords": ["electric", "gas", "water", "internet", "phone", "mobile", "utility", "bill"]
+                        },
+                        "🛍 Shopping": {
+                            "color": "#98D8C8",
+                            "keywords": ["shopping", "clothing", "amazon", "rakuten", "retail", "store", "mall"]
+                        },
+                        "🎭 Entertainment": {
+                            "color": "#F7DC6F",
+                            "keywords": ["movie", "game", "concert", "theater", "netflix", "spotify", "entertainment"]
+                        },
+                        "🌱 Health & Wellness": {
+                            "color": "#BB8FCE",
+                            "keywords": ["doctor", "dentist", "pharmacy", "medical", "gym", "fitness", "health", "wellness"]
+                        },
+                        "🌀 Miscellaneous": {
+                            "color": "#747D8C",
+                            "keywords": ["miscellaneous", "other", "random", "misc"]
+                        }
+                    },
+                    "auto_categorization_rules": {
+                        "min_confidence": 0.6,
+                        "fallback_category": "🌀 Miscellaneous",
+                        "case_sensitive": False
+                    }
+                }
+            },
+            "Family Mode": {
+                "description": "Adds child-related, home, and wellness categories",
+                "ideal_for": "families, caregivers, or folks with dependents",
+                "categories": {
+                    "🏠 Rent & Housing": "#FF6B6B",
+                    "🍽 Eats & Treats": "#4ECDC4",
+                    "👶 Kids & Baby": "#FFB6C1",
+                    "💡 Bills & Utilities": "#FFA07A",
+                    "🛍 Retail Therapy": "#98D8C8",
+                    "💅 Self-Care": "#DDA0DD",
+                    "🌱 Wellness": "#BB8FCE",
+                    "🧾 Medical & Care": "#87CEEB",
+                    "🚗 Transport": "#45B7D1",
+                    "🎁 Gifts": "#F7DC6F",
+                    "🌀 Misc & One-Offs": "#747D8C"
+                },
+                "_metadata": {
+                    "categories": {
+                        "🏠 Rent & Housing": {
+                            "color": "#FF6B6B",
+                            "keywords": ["rent", "mortgage", "maintenance", "repair", "furniture", "home", "house"]
+                        },
+                        "🍽 Eats & Treats": {
+                            "color": "#4ECDC4",
+                            "keywords": ["restaurant", "cafe", "dining", "food", "takeout", "delivery", "starbucks"]
+                        },
+                        "👶 Kids & Baby": {
+                            "color": "#FFB6C1",
+                            "keywords": ["toys", "kids", "baby", "child", "daughter", "son", "childcare", "school"]
+                        },
+                        "💡 Bills & Utilities": {
+                            "color": "#FFA07A",
+                            "keywords": ["electric", "gas", "water", "internet", "phone", "mobile", "utility", "bill"]
+                        },
+                        "🛍 Retail Therapy": {
+                            "color": "#98D8C8",
+                            "keywords": ["shopping", "clothing", "amazon", "rakuten", "retail", "store", "mall"]
+                        },
+                        "💅 Self-Care": {
+                            "color": "#DDA0DD",
+                            "keywords": ["spa", "massage", "beauty", "salon", "skincare", "cosmetics", "wellness"]
+                        },
+                        "🌱 Wellness": {
+                            "color": "#BB8FCE",
+                            "keywords": ["gym", "fitness", "yoga", "health", "exercise", "wellness", "meditation"]
+                        },
+                        "🧾 Medical & Care": {
+                            "color": "#87CEEB",
+                            "keywords": ["doctor", "dentist", "pharmacy", "medical", "hospital", "clinic", "medicine"]
+                        },
+                        "🚗 Transport": {
+                            "color": "#45B7D1",
+                            "keywords": ["train", "bus", "taxi", "parking", "gas", "toll", "suica", "pasmo", "uber"]
+                        },
+                        "🎁 Gifts": {
+                            "color": "#F7DC6F",
+                            "keywords": ["gift", "present", "birthday", "holiday", "anniversary", "celebration"]
+                        },
+                        "🌀 Misc & One-Offs": {
+                            "color": "#747D8C",
+                            "keywords": ["miscellaneous", "other", "random", "one-off", "misc"]
+                        }
+                    },
+                    "auto_categorization_rules": {
+                        "min_confidence": 0.6,
+                        "fallback_category": "🌀 Misc & One-Offs",
+                        "case_sensitive": False
+                    }
+                }
+            },
+            "Freelancer Mode": {
+                "description": "Adds work-related, tax, and self-investment categories",
+                "ideal_for": "creators, small business folks, consultants, remote workers",
+                "categories": {
+                    "🏠 Rent & Workspace": "#FF6B6B",
+                    "🍽 Eats & Coffee": "#4ECDC4",
+                    "💻 Tech & Gear": "#20B2AA",
+                    "🧠 Education": "#DDA0DD",
+                    "💅 Self-Care": "#FFB6C1",
+                    "🚗 Transport": "#45B7D1",
+                    "💼 Business Expenses": "#F4A460",
+                    "🧾 Medical & Insurance": "#87CEEB",
+                    "🎁 Client Gifts": "#F7DC6F",
+                    "🌀 Misc & One-Offs": "#747D8C"
+                },
+                "_metadata": {
+                    "categories": {
+                        "🏠 Rent & Workspace": {
+                            "color": "#FF6B6B",
+                            "keywords": ["rent", "mortgage", "office", "workspace", "coworking", "furniture", "home"]
+                        },
+                        "🍽 Eats & Coffee": {
+                            "color": "#4ECDC4",
+                            "keywords": ["restaurant", "cafe", "coffee", "dining", "food", "takeout", "starbucks"]
+                        },
+                        "💻 Tech & Gear": {
+                            "color": "#20B2AA",
+                            "keywords": ["computer", "laptop", "phone", "electronics", "tech", "software", "hardware"]
+                        },
+                        "🧠 Education": {
+                            "color": "#DDA0DD",
+                            "keywords": ["course", "training", "learning", "education", "books", "skill", "certification"]
+                        },
+                        "💅 Self-Care": {
+                            "color": "#FFB6C1",
+                            "keywords": ["spa", "massage", "beauty", "salon", "skincare", "cosmetics", "wellness"]
+                        },
+                        "🚗 Transport": {
+                            "color": "#45B7D1",
+                            "keywords": ["train", "bus", "taxi", "parking", "gas", "toll", "suica", "pasmo", "uber"]
+                        },
+                        "💼 Business Expenses": {
+                            "color": "#F4A460",
+                            "keywords": ["business", "office", "supplies", "meeting", "client", "expense", "tax"]
+                        },
+                        "🧾 Medical & Insurance": {
+                            "color": "#87CEEB",
+                            "keywords": ["doctor", "dentist", "pharmacy", "medical", "insurance", "health", "clinic"]
+                        },
+                        "🎁 Client Gifts": {
+                            "color": "#F7DC6F",
+                            "keywords": ["gift", "present", "client", "business", "celebration", "thank you"]
+                        },
+                        "🌀 Misc & One-Offs": {
+                            "color": "#747D8C",
+                            "keywords": ["miscellaneous", "other", "random", "one-off", "misc"]
+                        }
+                    },
+                    "auto_categorization_rules": {
+                        "min_confidence": 0.6,
+                        "fallback_category": "🌀 Misc & One-Offs",
+                        "case_sensitive": False
+                    }
+                }
+            },
+            "Full Lifestyle Mode": {
+                "description": "Well-rounded, perfect for most everyday users with a mix of fun, practical, and personal",
+                "ideal_for": "users who want comprehensive tracking",
+                "categories": {
+                    "🏠 Rent & Housing": "#FF6B6B",
+                    "🍽 Eats & Treats": "#4ECDC4",
+                    "☕ Coffee": "#8B4513",
+                    "🍺 Alcohol": "#FFD700",
+                    "🛍 Retail Therapy": "#98D8C8",
+                    "💡 Bills & Utilities": "#FFA07A",
+                    "💻 Tech & Gear": "#20B2AA",
+                    "🧠 Education": "#DDA0DD",
+                    "💅 Self-Care": "#FFB6C1",
+                    "👶 Kids & Baby": "#FFB6C1",
+                    "🚗 Transport": "#45B7D1",
+                    "🌱 Wellness": "#BB8FCE",
+                    "🧾 Medical & Care": "#87CEEB",
+                    "🎭 Fun & Entertainment": "#F7DC6F",
+                    "🎁 Gifts": "#F7DC6F",
+                    "🌀 Misc & One-Offs": "#747D8C"
+                },
+                "_metadata": {
+                    "categories": {
+                        "🏠 Rent & Housing": {
+                            "color": "#FF6B6B",
+                            "keywords": ["rent", "mortgage", "maintenance", "repair", "furniture", "home", "house"]
+                        },
+                        "🍽 Eats & Treats": {
+                            "color": "#4ECDC4",
+                            "keywords": ["restaurant", "cafe", "dining", "food", "takeout", "delivery", "meal"]
+                        },
+                        "☕ Coffee": {
+                            "color": "#8B4513",
+                            "keywords": ["coffee", "starbucks", "cafe", "espresso", "latte", "cappuccino", "bean"]
+                        },
+                        "🍺 Alcohol": {
+                            "color": "#FFD700",
+                            "keywords": ["beer", "wine", "alcohol", "bar", "pub", "sake", "whiskey", "vodka"]
+                        },
+                        "🛍 Retail Therapy": {
+                            "color": "#98D8C8",
+                            "keywords": ["shopping", "clothing", "amazon", "rakuten", "retail", "store", "mall"]
+                        },
+                        "💡 Bills & Utilities": {
+                            "color": "#FFA07A",
+                            "keywords": ["electric", "gas", "water", "internet", "phone", "mobile", "utility", "bill"]
+                        },
+                        "💻 Tech & Gear": {
+                            "color": "#20B2AA",
+                            "keywords": ["computer", "laptop", "phone", "electronics", "tech", "software", "hardware"]
+                        },
+                        "🧠 Education": {
+                            "color": "#DDA0DD",
+                            "keywords": ["school", "tuition", "books", "course", "training", "learning", "education"]
+                        },
+                        "💅 Self-Care": {
+                            "color": "#FFB6C1",
+                            "keywords": ["spa", "massage", "beauty", "salon", "skincare", "cosmetics", "wellness"]
+                        },
+                        "👶 Kids & Baby": {
+                            "color": "#FFB6C1",
+                            "keywords": ["toys", "kids", "baby", "child", "daughter", "son", "childcare", "school"]
+                        },
+                        "🚗 Transport": {
+                            "color": "#45B7D1",
+                            "keywords": ["train", "bus", "taxi", "parking", "gas", "toll", "suica", "pasmo", "uber"]
+                        },
+                        "🌱 Wellness": {
+                            "color": "#BB8FCE",
+                            "keywords": ["gym", "fitness", "yoga", "health", "exercise", "wellness", "meditation"]
+                        },
+                        "🧾 Medical & Care": {
+                            "color": "#87CEEB",
+                            "keywords": ["doctor", "dentist", "pharmacy", "medical", "hospital", "clinic", "medicine", "seims", "matsumoto kiyoshi"]
+                        },
+                        "🎭 Fun & Entertainment": {
+                            "color": "#F7DC6F",
+                            "keywords": ["movie", "game", "concert", "theater", "netflix", "spotify", "entertainment", "fun"]
+                        },
+                        "🎁 Gifts": {
+                            "color": "#F7DC6F",
+                            "keywords": ["gift", "present", "birthday", "holiday", "anniversary", "celebration"]
+                        },
+                        "🌀 Misc & One-Offs": {
+                            "color": "#747D8C",
+                            "keywords": ["miscellaneous", "other", "random", "one-off", "misc"]
+                        }
+                    },
+                    "auto_categorization_rules": {
+                        "min_confidence": 0.6,
+                        "fallback_category": "🌀 Misc & One-Offs",
+                        "case_sensitive": False
+                    }
+                }
+            }
+        }
+        
+        # Preset selection
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            selected_preset = st.selectbox(
+                "Choose a preset:",
+                options=list(CATEGORY_PRESETS.keys()),
+                index=0,
+                help="Select a category preset that matches your lifestyle"
+            )
+        
+        with col2:
+            if st.button("Preview Categories", key="preview_preset"):
+                st.session_state.show_preview = True
+        
+        # Show preset description
+        preset_info = CATEGORY_PRESETS[selected_preset]
+        st.markdown(f"**Description:** {preset_info['description']}")
+        st.markdown(f"**👉 Ideal for:** {preset_info['ideal_for']}")
+        st.markdown(f"**📊 Categories:** {len(preset_info['categories'])} categories")
+        
+        # Show preview if requested
+        if st.session_state.get('show_preview', False):
+            st.markdown("### 👀 Preview Categories")
+            preview_cols = st.columns(3)
+            for i, (cat_name, cat_color) in enumerate(preset_info['categories'].items()):
+                with preview_cols[i % 3]:
+                    st.markdown(f"<div style='background-color: {cat_color}; padding: 8px; border-radius: 4px; margin: 2px; text-align: center; color: white; font-weight: bold;'>{cat_name}</div>", unsafe_allow_html=True)
+        
+        # Apply preset button with warning
+        if st.button("🎯 Apply Preset", key="apply_preset", type="primary"):
+            # Get current categories to check if they exist
+            current_categories = get_available_categories(user_id)
+            
+            if len(current_categories) > 0:
+                # Show warning
+                st.warning("⚠️ **Warning:** Applying a preset will replace your current categories. Are you sure?")
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("✅ Yes, Apply Preset", key="confirm_apply"):
+                        try:
+                            # Apply the preset
+                            settings = get_user_settings(user_id)
+                            
+                            # Handle presets with metadata vs simple presets
+                            if "_metadata" in preset_info:
+                                # Full format with metadata
+                                settings["custom_categories"] = preset_info["categories"]
+                                settings["custom_categories"]["_metadata"] = preset_info["_metadata"]
+                            else:
+                                # Simple format - just categories
+                                settings["custom_categories"] = preset_info["categories"]
+                            
+                            update_user_settings(user_id, settings)
+                            
+                            # Clear cache to ensure UI updates
+                            st.cache_data.clear()
+                            
+                            st.success(f"✅ {selected_preset} applied successfully!")
+                            st.balloons()
+                            time.sleep(2)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error applying preset: {str(e)}")
+                with col2:
+                    if st.button("❌ Cancel", key="cancel_apply"):
+                        st.rerun()
+            else:
+                # No existing categories, apply directly
+                try:
+                    settings = get_user_settings(user_id)
+                    
+                    # Handle presets with metadata vs simple presets
+                    if "_metadata" in preset_info:
+                        # Full format with metadata
+                        settings["custom_categories"] = preset_info["categories"]
+                        settings["custom_categories"]["_metadata"] = preset_info["_metadata"]
+                    else:
+                        # Simple format - just categories
+                        settings["custom_categories"] = preset_info["categories"]
+                    
+                    update_user_settings(user_id, settings)
+                    
+                    # Clear cache to ensure UI updates
+                    st.cache_data.clear()
+                    
+                    st.success(f"✅ {selected_preset} applied successfully!")
+                    st.balloons()
+                    time.sleep(2)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error applying preset: {str(e)}")
+        
+        st.markdown("---")
+        
+        # Debug section to clear custom categories
+        st.markdown("### 🔧 Debug")
+        if st.button("🗑️ Clear All Custom Categories", type="secondary"):
+            try:
+                settings = get_user_settings(user_id)
+                settings["custom_categories"] = {}  # Clear custom categories
+                update_user_settings(user_id, settings)
+                st.cache_data.clear()  # Clear cache
+                st.success("✅ All custom categories cleared! Default categories restored.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error clearing categories: {str(e)}")
+        
+        st.markdown("---")
+        
+        # Existing category management
+        st.markdown("### ➕ Custom Categories")
         st.info("Add custom categories or modify existing ones. Note: Categories in use cannot be deleted.")
         
         # Add new category
@@ -893,6 +1336,7 @@ with tab6:
                 with col1:
                     st.markdown(f"**{category}**")
                 with col2:
+                    # Check if this is a custom category (not in default categories)
                     if category not in DEFAULT_CATEGORIES:
                         if st.button("Delete", key=f"delete_{category}"):
                             try:

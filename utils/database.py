@@ -17,20 +17,24 @@ logger = logging.getLogger(__name__)
 with open(Path(__file__).parent.parent / 'config' / 'categories.json', 'r') as f:
     DEFAULT_CATEGORIES = json.load(f)
 
-# Default budget limits per category (monthly)
+# Default budget limits per category (monthly) - Full Lifestyle Mode
 BUDGET_LIMITS = {
-    "Food & Dining": 80000,
-    "Groceries": 50000,
-    "Transportation": 30000,
-    "Shopping": 40000,
-    "Entertainment": 30000,
-    "Health & Medical": 20000,
-    "Utilities": 35000,
-    "Housing": 150000,
-    "Education": 25000,
-    "Travel": 50000,
-    "Mila": 30000,
-    "Other": 30000
+    "🏠 Rent & Housing": 150000,
+    "🍽 Eats & Treats": 80000,
+    "☕ Coffee": 15000,
+    "🍺 Alcohol": 20000,
+    "🛍 Retail Therapy": 40000,
+    "💡 Bills & Utilities": 35000,
+    "💻 Tech & Gear": 25000,
+    "🧠 Education": 25000,
+    "💅 Self-Care": 20000,
+    "👶 Kids & Baby": 30000,
+    "🚗 Transport": 30000,
+    "🌱 Wellness": 20000,
+    "🧾 Medical & Care": 20000,
+    "🎭 Fun & Entertainment": 30000,
+    "🎁 Gifts": 15000,
+    "🌀 Misc & One-Offs": 30000
 }
 
 class DatabaseError(Exception):
@@ -335,13 +339,16 @@ def delete_custom_category(user_id: str, category_name: str) -> None:
         logger.error(f"Error deleting custom category: {e}")
         raise DatabaseError(f"Failed to delete custom category: {e}")
 
-def get_available_categories(user_id: str) -> List[str]:
+def get_available_categories(user_id: str = None) -> List[str]:
     """Get list of available expense categories including custom ones."""
+    if user_id is None:
+        return [cat for cat in DEFAULT_CATEGORIES.keys() if cat != "_metadata"]
+    
     try:
         settings = get_user_settings(user_id)
         categories = settings.get("custom_categories", DEFAULT_CATEGORIES)
         return [cat for cat in categories.keys() if cat != "_metadata"]
     except Exception as e:
         logger.error(f"Error getting categories: {e}")
-        return list(DEFAULT_CATEGORIES.keys())
+        return [cat for cat in DEFAULT_CATEGORIES.keys() if cat != "_metadata"]
         

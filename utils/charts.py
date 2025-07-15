@@ -19,15 +19,18 @@ from .database import get_expenses_df, get_user_settings
 logger = logging.getLogger(__name__)
 
 
-def create_category_pie_chart(category_totals: pd.DataFrame, title: str = "Spending by Category") -> go.Figure:
+def create_category_pie_chart(category_totals: pd.DataFrame, title: str = "Spending by Category", user_id: str = None) -> go.Figure:
     """Create a pie chart for category spending breakdown."""
+    # Get user's category colors
+    category_colors = get_user_category_colors(user_id)
+    
     fig = px.pie(
         category_totals,
         values='amount',
         names='category',
         title=title,
         color='category',
-        color_discrete_map=DEFAULT_CATEGORIES
+        color_discrete_map=category_colors
     )
     
     fig.update_traces(
@@ -118,10 +121,13 @@ def create_monthly_comparison_chart(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def create_category_trend_chart(expenses_df: pd.DataFrame, categories: List[str] = None) -> go.Figure:
+def create_category_trend_chart(expenses_df: pd.DataFrame, categories: List[str] = None, user_id: str = None) -> go.Figure:
     """Create a multi-line chart showing spending trends by category over time."""
     if categories is None:
         categories = expenses_df['category'].unique()
+    
+    # Get user's category colors
+    category_colors = get_user_category_colors(user_id)
     
     # Group by month and category
     expenses_df['month'] = expenses_df['date'].dt.to_period('M')
@@ -138,7 +144,7 @@ def create_category_trend_chart(expenses_df: pd.DataFrame, categories: List[str]
             y=category_data['amount'],
             mode='lines+markers',
             name=category,
-            line=dict(color=DEFAULT_CATEGORIES.get(category, '#747D8C')),
+            line=dict(color=category_colors.get(category, '#747D8C')),
             hovertemplate=f'<b>{category}</b><br>%{{x}}<br>Amount: ' + CURRENCY_SYMBOL + '%{y:,.2f}<extra></extra>'
         ))
     
@@ -669,7 +675,7 @@ def create_category_budget_allocation(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def create_spending_by_category_pie(expenses: List[Dict], start_date: Optional[str] = None, end_date: Optional[str] = None) -> go.Figure:
+def create_spending_by_category_pie(expenses: List[Dict], start_date: Optional[str] = None, end_date: Optional[str] = None, user_id: str = None) -> go.Figure:
     """Create a pie chart showing spending distribution by category."""
     df = pd.DataFrame(expenses)
     
@@ -682,12 +688,8 @@ def create_spending_by_category_pie(expenses: List[Dict], start_date: Optional[s
     # Group by category and sum amounts
     category_totals = df.groupby('category')['amount'].sum().reset_index()
     
-    # Load category colors
-    with open(Path(__file__).parent.parent / 'config' / 'categories.json', 'r') as f:
-        categories = json.load(f)
-    
-    # Create color map
-    color_map = {cat: color for cat, color in categories.items() if cat != '_metadata'}
+    # Get user's category colors
+    color_map = get_user_category_colors(user_id)
     
     # Create pie chart
     fig = go.Figure(data=[go.Pie(
@@ -798,4 +800,21 @@ def get_available_categories(user_id: str = None) -> List[str]:
     with open(Path(__file__).parent.parent / 'config' / 'categories.json', 'r') as f:
         categories = json.load(f)
     return [cat for cat in categories.keys() if cat != "_metadata"]
+
+
+def get_user_category_colors(user_id: str = None) -> Dict[str, str]:
+    """Get user's category colors mapping."""
+    if user_id is not None:
+        try:
+            settings = get_user_settings(user_id)
+            categories = settings.get("custom_categories", DEFAULT_CATEGORIES)
+            # Return color mapping, filtering out _metadata
+            return {cat: color for cat, color in categories.items() if cat != "_metadata"}
+        except Exception as e:
+            logger.error(f"Error getting category colors: {e}")
+    
+    # Fallback to default categories
+    with open(Path(__file__).parent.parent / 'config' / 'categories.json', 'r') as f:
+        categories = json.load(f)
+    return {cat: color for cat, color in categories.items() if cat != "_metadata"}
     

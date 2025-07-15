@@ -1,70 +1,90 @@
 {
-    "Food & Dining": "#FF6B6B",
-    "Groceries": "#4ECDC4",
-    "Transportation": "#45B7D1",
-    "Shopping": "#96CEB4",
-    "Entertainment": "#FECA57",
-    "Health & Medical": "#54A0FF",
-    "Utilities": "#FF9FF3",
-    "Housing": "#5F27CD",
-    "Education": "#00D2D3",
-    "Travel": "#C7F464",
-    "Mila": "#FF9999",
-    "Other": "#747D8C",
+    "🏠 Rent & Housing": "#FF6B6B",
+    "🍽 Eats & Treats": "#4ECDC4",
+    "☕ Coffee": "#8B4513",
+    "🍺 Alcohol": "#FFD700",
+    "🛍 Retail Therapy": "#98D8C8",
+    "💡 Bills & Utilities": "#FFA07A",
+    "💻 Tech & Gear": "#20B2AA",
+    "🧠 Education": "#DDA0DD",
+    "💅 Self-Care": "#FFB6C1",
+    "👶 Kids & Baby": "#FFB6C1",
+    "🚗 Transport": "#45B7D1",
+    "🌱 Wellness": "#BB8FCE",
+    "🧾 Medical & Care": "#87CEEB",
+    "🎭 Fun & Entertainment": "#F7DC6F",
+    "🎁 Gifts": "#F7DC6F",
+    "🌀 Misc & One-Offs": "#747D8C",
     "_metadata": {
         "categories": {
-            "Food & Dining": {
+            "🏠 Rent & Housing": {
                 "color": "#FF6B6B",
-                "keywords": ["restaurant", "cafe", "coffee", "dining", "food", "takeout"]
+                "keywords": ["rent", "mortgage", "maintenance", "repair", "furniture", "home", "house"]
             },
-            "Groceries": {
+            "🍽 Eats & Treats": {
                 "color": "#4ECDC4",
-                "keywords": ["supermarket", "grocery", "maruetsu", "マルエツ", "イトーヨーカドー", "ライフ", "サミット", "オーケー", "イオン", "成城石井", "コープ"]
+                "keywords": ["restaurant", "cafe", "dining", "food", "takeout", "delivery", "meal"]
             },
-            "Transportation": {
+            "☕ Coffee": {
+                "color": "#8B4513",
+                "keywords": ["coffee", "starbucks", "cafe", "espresso", "latte", "cappuccino", "bean"]
+            },
+            "🍺 Alcohol": {
+                "color": "#FFD700",
+                "keywords": ["beer", "wine", "alcohol", "bar", "pub", "sake", "whiskey", "vodka"]
+            },
+            "🛍 Retail Therapy": {
+                "color": "#98D8C8",
+                "keywords": ["shopping", "clothing", "amazon", "rakuten", "retail", "store", "mall"]
+            },
+            "💡 Bills & Utilities": {
+                "color": "#FFA07A",
+                "keywords": ["electric", "gas", "water", "internet", "phone", "mobile", "utility", "bill"]
+            },
+            "💻 Tech & Gear": {
+                "color": "#20B2AA",
+                "keywords": ["computer", "laptop", "phone", "electronics", "tech", "software", "hardware"]
+            },
+            "🧠 Education": {
+                "color": "#DDA0DD",
+                "keywords": ["school", "tuition", "books", "course", "training", "learning", "education"]
+            },
+            "💅 Self-Care": {
+                "color": "#FFB6C1",
+                "keywords": ["spa", "massage", "beauty", "salon", "skincare", "cosmetics", "wellness"]
+            },
+            "👶 Kids & Baby": {
+                "color": "#FFB6C1",
+                "keywords": ["toys", "kids", "baby", "child", "daughter", "son", "childcare", "school"]
+            },
+            "🚗 Transport": {
                 "color": "#45B7D1",
-                "keywords": ["train", "bus", "taxi", "parking", "gas", "toll", "suica", "pasmo"]
+                "keywords": ["train", "bus", "taxi", "parking", "gas", "toll", "suica", "pasmo", "uber"]
             },
-            "Shopping": {
-                "color": "#96CEB4",
-                "keywords": ["clothing", "electronics", "books", "amazon", "rakuten"]
+            "🌱 Wellness": {
+                "color": "#BB8FCE",
+                "keywords": ["gym", "fitness", "yoga", "health", "exercise", "wellness", "meditation"]
             },
-            "Entertainment": {
-                "color": "#FECA57",
-                "keywords": ["movie", "game", "concert", "theater", "netflix", "spotify"]
+            "🧾 Medical & Care": {
+                "color": "#87CEEB",
+                "keywords": ["doctor", "dentist", "pharmacy", "medical", "hospital", "clinic", "medicine", "seims", "matsumoto kiyoshi"]
             },
-            "Health & Medical": {
-                "color": "#54A0FF",
-                "keywords": ["doctor", "dentist", "pharmacy", "medical", "health", "fitness", "seims", "セイムス", "matsumoto kiyoshi", "マツモトキヨシ", "sundrug", "サンドラッグ", "welcia", "ウエルシア", "tsuruha", "ツルハ", "cocokara fine", "ココカラファイン", "sugi pharmacy", "スギ薬局", "daikoku drug", "ダイコクドラッグ"]
+            "🎭 Fun & Entertainment": {
+                "color": "#F7DC6F",
+                "keywords": ["movie", "game", "concert", "theater", "netflix", "spotify", "entertainment", "fun"]
             },
-            "Utilities": {
-                "color": "#FF9FF3",
-                "keywords": ["electric", "gas", "water", "internet", "phone", "mobile"]
+            "🎁 Gifts": {
+                "color": "#F7DC6F",
+                "keywords": ["gift", "present", "birthday", "holiday", "anniversary", "celebration"]
             },
-            "Housing": {
-                "color": "#5F27CD",
-                "keywords": ["rent", "mortgage", "maintenance", "repair", "furniture"]
-            },
-            "Education": {
-                "color": "#00D2D3",
-                "keywords": ["school", "tuition", "books", "course", "training"]
-            },
-            "Travel": {
-                "color": "#C7F464",
-                "keywords": ["hotel", "flight", "airbnb", "vacation", "travel"]
-            },
-            "Mila": {
-                "color": "#FF9999",
-                "keywords": ["toys", "kids", "baby", "child", "daughter", "mila"]
-            },
-            "Other": {
+            "🌀 Misc & One-Offs": {
                 "color": "#747D8C",
-                "keywords": []
+                "keywords": ["miscellaneous", "other", "random", "one-off", "misc"]
             }
         },
         "auto_categorization_rules": {
             "min_confidence": 0.6,
-            "fallback_category": "Other",
+            "fallback_category": "🌀 Misc & One-Offs",
             "case_sensitive": false
         }
     }
