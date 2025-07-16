@@ -224,7 +224,23 @@ def signup():
                         })
                     
                     if auth_response.user:
-                        st.success("🎉 Signup successful! Please check your email for a confirmation link, then log in.")
+                        # Show celebration and success message
+                        st.balloons()
+                        st.success("🎉 Signup successful!")
+                        
+                        # Prominent email confirmation message
+                        st.info("""
+                        📧 **Important: Check Your Email!**
+                        
+                        We've sent a confirmation link to your email address.
+                        You must click the link in the email to activate your account before you can log in.
+                        
+                        **Next steps:**
+                        1. Check your email inbox (and spam folder)
+                        2. Click the confirmation link
+                        3. Return here to log in
+                        """)
+                        
                         st.session_state.auth_mode = "login"
                         st.rerun()
                     else:
