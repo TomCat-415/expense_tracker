@@ -188,25 +188,61 @@ def signup():
     st.markdown('</div>', unsafe_allow_html=True)
     
     st.header("📝 Sign Up")
-    email = st.text_input("Email", key="signup_email")
-    password = st.text_input("Password", type="password", key="signup_password")
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        if st.button("Sign Up", use_container_width=True):
-            try:
-                auth_response = supabase.auth.sign_up({
-                    "email": email,
-                    "password": password
-                })
-                if auth_response.user:
-                    st.success("Signup successful! Please check your email for a confirmation link, then log in.")
-                    st.session_state.auth_mode = "login"
-                else:
-                    st.error("Signup failed. Try a different email.")
-            except Exception as e:
-                st.error(f"Signup failed: {e}")
-    with col2:
-        st.button("Already have an account? Login", on_click=switch_auth_mode, use_container_width=True)
+    
+    # Show password requirements
+    st.info("📋 Password requirements: At least 6 characters long")
+    
+    with st.form("signup_form", clear_on_submit=False):
+        email = st.text_input("Email", key="signup_email", placeholder="Enter your email address")
+        password = st.text_input("Password", type="password", key="signup_password", 
+                                placeholder="Enter a strong password")
+        
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            submitted = st.form_submit_button("Sign Up", use_container_width=True)
+            if submitted:
+                # Input validation
+                if not email or not password:
+                    st.error("Please fill in both email and password fields.")
+                    return
+                
+                # Basic email validation
+                if "@" not in email or "." not in email:
+                    st.error("Please enter a valid email address.")
+                    return
+                
+                # Password length validation
+                if len(password) < 6:
+                    st.error("Password must be at least 6 characters long.")
+                    return
+                
+                try:
+                    with st.spinner("Creating your account..."):
+                        auth_response = supabase.auth.sign_up({
+                            "email": email,
+                            "password": password
+                        })
+                    
+                    if auth_response.user:
+                        st.success("🎉 Signup successful! Please check your email for a confirmation link, then log in.")
+                        st.session_state.auth_mode = "login"
+                        st.rerun()
+                    else:
+                        st.error("Signup failed. The email might already be in use or there was a server error.")
+                        
+                except Exception as e:
+                    error_message = str(e).lower()
+                    if "email" in error_message and "already" in error_message:
+                        st.error("This email is already registered. Please use a different email or try logging in.")
+                    elif "password" in error_message:
+                        st.error("Password doesn't meet requirements. Please try a stronger password.")
+                    elif "invalid" in error_message:
+                        st.error("Invalid email format. Please check your email address.")
+                    else:
+                        st.error(f"Signup failed: {e}")
+        
+        with col2:
+            st.form_submit_button("Already have an account? Login", on_click=switch_auth_mode, use_container_width=True)
 
 def logout():
     try:
