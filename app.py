@@ -157,6 +157,10 @@ def login():
         email = st.text_input("Email")
         password = st.text_input("Password", type="password", autocomplete="current-password")
         remember_me = st.checkbox("Remember me", value=True)
+        
+        # Forgot password option
+        forgot_password = st.form_submit_button("🔑 Forgot Password?", use_container_width=False)
+        
         col1, col2 = st.columns([1, 2])
         with col1:
             submitted = st.form_submit_button("Login", use_container_width=True)
@@ -178,6 +182,28 @@ def login():
                     st.rerun()
                 except Exception as e:
                     st.error(f"Login failed: {e}")
+            
+            # Handle forgot password
+            if forgot_password:
+                if not email:
+                    st.error("Please enter your email address first, then click 'Forgot Password?'")
+                else:
+                    try:
+                        with st.spinner("Sending password reset email..."):
+                            supabase.auth.reset_password_email(email)
+                        st.success("✅ Password reset email sent!")
+                        st.info("""
+                        📧 **Check your email for password reset instructions.**
+                        
+                        **Next steps:**
+                        1. Check your email inbox (and spam folder)
+                        2. Click the password reset link
+                        3. Create a new password
+                        4. Return here to log in with your new password
+                        """)
+                    except Exception as e:
+                        st.error(f"Failed to send password reset email: {e}")
+        
         with col2:
             st.form_submit_button("Don't have an account? Sign Up", on_click=switch_auth_mode, use_container_width=True)
 
@@ -223,33 +249,56 @@ def signup():
                             "password": password
                         })
                     
+                    # Check if user already exists - Supabase might still return a user object
+                    # even if the email is already registered
                     if auth_response.user:
-                        # Show celebration and success message
-                        st.balloons()
-                        st.success("🎉 Signup successful!")
-                        
-                        # Prominent email confirmation message
-                        st.info("""
-                        📧 **Important: Check Your Email!**
-                        
-                        We've sent a confirmation link to your email address.
-                        You must click the link in the email to activate your account before you can log in.
-                        
-                        **Next steps:**
-                        1. Check your email inbox (and spam folder)
-                        2. Click the confirmation link
-                        3. Return here to log in
-                        """)
-                        
-                        st.session_state.auth_mode = "login"
-                        st.rerun()
+                        # Check if this is a new user or existing user
+                        if hasattr(auth_response.user, 'email_confirmed_at') and auth_response.user.email_confirmed_at:
+                            # User already exists and is confirmed
+                            st.warning("⚠️ **This email is already registered!**")
+                            st.info("""
+                            🔑 **You already have an account with this email.**
+                            
+                            **Please log in instead:**
+                            1. Click "Already have an account? Login" below
+                            2. Use your existing password
+                            3. If you forgot your password, use the "Forgot Password?" link on the login page
+                            """)
+                        else:
+                            # New signup or unconfirmed user
+                            st.balloons()
+                            st.success("🎉 Signup successful!")
+                            
+                            # Prominent email confirmation message
+                            st.info("""
+                            📧 **Important: Check Your Email!**
+                            
+                            We've sent a confirmation link to your email address.
+                            You must click the link in the email to activate your account before you can log in.
+                            
+                            **Next steps:**
+                            1. Check your email inbox (and spam folder)
+                            2. Click the confirmation link
+                            3. Return here to log in
+                            """)
+                            
+                            st.session_state.auth_mode = "login"
+                            st.rerun()
                     else:
-                        st.error("Signup failed. The email might already be in use or there was a server error.")
+                        st.error("Signup failed. Please try again or contact support.")
                         
                 except Exception as e:
                     error_message = str(e).lower()
-                    if "email" in error_message and "already" in error_message:
-                        st.error("This email is already registered. Please use a different email or try logging in.")
+                    if "already" in error_message or "exists" in error_message:
+                        st.warning("⚠️ **This email is already registered!**")
+                        st.info("""
+                        🔑 **You already have an account with this email.**
+                        
+                        **Please log in instead:**
+                        1. Click "Already have an account? Login" below
+                        2. Use your existing password
+                        3. If you forgot your password, use the "Forgot Password?" link on the login page
+                        """)
                     elif "password" in error_message:
                         st.error("Password doesn't meet requirements. Please try a stronger password.")
                     elif "invalid" in error_message:
