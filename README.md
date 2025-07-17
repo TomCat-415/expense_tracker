@@ -1,4 +1,4 @@
-# 💰 Family Expense Tracker
+# 💰 Expensei - Your Expense Sensei
 
 A sophisticated, multi-user expense tracking application built with **Streamlit** and **Supabase**. Features intelligent OCR receipt scanning, recurring expense management with averaging, real-time analytics, and secure multi-user authentication.
 
