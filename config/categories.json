@@ -1,29 +1,39 @@
 {
-    "🏠 Rent & Housing": "#FF6B6B",
-    "🍽 Eats & Treats": "#4ECDC4",
+    "🏠 Rent": "#FF6B6B",
+    "🏠 Housing": "#FF9999",
+    "🛒 Groceries": "#4ECDC4",
+    "🍽 Eats & Treats": "#66D9D0",
     "☕ Coffee": "#8B4513",
     "🍺 Alcohol": "#FFD700",
-    "🛍 Retail Therapy": "#98D8C8",
-    "💡 Bills & Utilities": "#FFA07A",
+    "🛍 Retail Therapy": "#4ECDC4",
+    "💡 Bills & Utilities": "#20B2AA",
     "💻 Tech & Gear": "#20B2AA",
-    "🧠 Education": "#DDA0DD",
-    "💅 Self-Care": "#FFB6C1",
-    "👶 Kids & Baby": "#FFB6C1",
+    "🧠 Education": "#4ECDC4",
+    "💅 Self-Care": "#66D9D0",
+    "👶 Kids & Baby": "#98D8C8",
     "🚗 Transport": "#45B7D1",
-    "🌱 Wellness": "#BB8FCE",
+    "🌱 Wellness": "#4ECDC4",
     "🧾 Medical & Care": "#87CEEB",
-    "🎭 Fun & Entertainment": "#F7DC6F",
-    "🎁 Gifts": "#F7DC6F",
+    "🎭 Fun & Entertainment": "#66D9D0",
+    "🎁 Gifts": "#4ECDC4",
     "🌀 Misc & One-Offs": "#747D8C",
     "_metadata": {
         "categories": {
-            "🏠 Rent & Housing": {
+            "🏠 Rent": {
                 "color": "#FF6B6B",
-                "keywords": ["rent", "mortgage", "maintenance", "repair", "furniture", "home", "house"]
+                "keywords": ["rent", "rental", "apartment", "monthly rent", "housing rent"]
+            },
+            "🏠 Housing": {
+                "color": "#FF9999",
+                "keywords": ["mortgage", "maintenance", "repair", "furniture", "home", "house", "utilities", "internet", "cable"]
+            },
+            "🛒 Groceries": {
+                "color": "#4ECDC4",
+                "keywords": ["grocery", "supermarket", "food shopping", "market", "fresh", "produce", "meat", "dairy", "bread"]
             },
             "🍽 Eats & Treats": {
-                "color": "#4ECDC4",
-                "keywords": ["restaurant", "cafe", "dining", "food", "takeout", "delivery", "meal"]
+                "color": "#66D9D0",
+                "keywords": ["restaurant", "cafe", "dining", "takeout", "delivery", "meal", "dining out", "fast food"]
             },
             "☕ Coffee": {
                 "color": "#8B4513",
@@ -34,11 +44,11 @@
                 "keywords": ["beer", "wine", "alcohol", "bar", "pub", "sake", "whiskey", "vodka"]
             },
             "🛍 Retail Therapy": {
-                "color": "#98D8C8",
+                "color": "#4ECDC4",
                 "keywords": ["shopping", "clothing", "amazon", "rakuten", "retail", "store", "mall"]
             },
             "💡 Bills & Utilities": {
-                "color": "#FFA07A",
+                "color": "#20B2AA",
                 "keywords": ["electric", "gas", "water", "internet", "phone", "mobile", "utility", "bill"]
             },
             "💻 Tech & Gear": {
@@ -46,15 +56,15 @@
                 "keywords": ["computer", "laptop", "phone", "electronics", "tech", "software", "hardware"]
             },
             "🧠 Education": {
-                "color": "#DDA0DD",
+                "color": "#4ECDC4",
                 "keywords": ["school", "tuition", "books", "course", "training", "learning", "education"]
             },
             "💅 Self-Care": {
-                "color": "#FFB6C1",
+                "color": "#66D9D0",
                 "keywords": ["spa", "massage", "beauty", "salon", "skincare", "cosmetics", "wellness"]
             },
             "👶 Kids & Baby": {
-                "color": "#FFB6C1",
+                "color": "#98D8C8",
                 "keywords": ["toys", "kids", "baby", "child", "daughter", "son", "childcare", "school"]
             },
             "🚗 Transport": {
@@ -62,7 +72,7 @@
                 "keywords": ["train", "bus", "taxi", "parking", "gas", "toll", "suica", "pasmo", "uber"]
             },
             "🌱 Wellness": {
-                "color": "#BB8FCE",
+                "color": "#4ECDC4",
                 "keywords": ["gym", "fitness", "yoga", "health", "exercise", "wellness", "meditation"]
             },
             "🧾 Medical & Care": {
@@ -70,11 +80,11 @@
                 "keywords": ["doctor", "dentist", "pharmacy", "medical", "hospital", "clinic", "medicine", "seims", "matsumoto kiyoshi"]
             },
             "🎭 Fun & Entertainment": {
-                "color": "#F7DC6F",
+                "color": "#66D9D0",
                 "keywords": ["movie", "game", "concert", "theater", "netflix", "spotify", "entertainment", "fun"]
             },
             "🎁 Gifts": {
-                "color": "#F7DC6F",
+                "color": "#4ECDC4",
                 "keywords": ["gift", "present", "birthday", "holiday", "anniversary", "celebration"]
             },
             "🌀 Misc & One-Offs": {

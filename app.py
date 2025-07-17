@@ -26,6 +26,7 @@ from utils.database import (
     add_custom_category,
     delete_custom_category,
     get_available_categories,
+    sync_default_categories_with_user_settings,
     DEFAULT_CATEGORIES,
     BUDGET_LIMITS,
     # Recurring expenses functions
@@ -149,7 +150,18 @@ def switch_auth_mode():
 def login():
     # Display logo
     st.markdown('<div style="margin-left: -20px;">', unsafe_allow_html=True)
-    st.image("logo.png", width=600)
+    
+    # Load logo with error handling
+    logo_path = Path("logo_optimized.png")
+    if logo_path.exists():
+        try:
+            st.image(str(logo_path), width=600)
+        except Exception as e:
+            st.error(f"Error loading logo: {e}")
+            st.markdown("### 💰 Expense Tracker")
+    else:
+        st.markdown("### 💰 Expense Tracker")
+    
     st.markdown('</div>', unsafe_allow_html=True)
     
     st.header("🔐 Login")
@@ -158,59 +170,72 @@ def login():
         password = st.text_input("Password", type="password", autocomplete="current-password")
         remember_me = st.checkbox("Remember me", value=True)
         
-        # Forgot password option
-        forgot_password = st.form_submit_button("🔑 Forgot Password?", use_container_width=False)
-        
         col1, col2 = st.columns([1, 2])
         with col1:
-            submitted = st.form_submit_button("Login", use_container_width=True)
-            if submitted:
-                try:
-                    auth_response = supabase.auth.sign_in_with_password({
-                        "email": email,
-                        "password": password
-                    })
-                    if not auth_response.user:
-                        st.error("Invalid email or password.")
-                        return
-                    st.session_state.user = auth_response.user
-                    
-                    # If remember me is checked, we don't need to do anything special
-                    # as Supabase will handle the refresh token automatically
-                    
-                    st.success("Logged in!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Login failed: {e}")
-            
-            # Handle forgot password
-            if forgot_password:
-                if not email:
-                    st.error("Please enter your email address first, then click 'Forgot Password?'")
-                else:
-                    try:
-                        with st.spinner("Sending password reset email..."):
-                            supabase.auth.reset_password_email(email)
-                        st.success("✅ Password reset email sent!")
-                        st.info("""
-                        📧 **Check your email for password reset instructions.**
-                        
-                        **Next steps:**
-                        1. Check your email inbox (and spam folder)
-                        2. Click the password reset link
-                        3. Create a new password
-                        4. Return here to log in with your new password
-                        """)
-                    except Exception as e:
-                        st.error(f"Failed to send password reset email: {e}")
+            submitted = st.form_submit_button("Login", use_container_width=True, type="primary")
         
         with col2:
             st.form_submit_button("Don't have an account? Sign Up", on_click=switch_auth_mode, use_container_width=True)
+        
+        # Forgot password option - placed after main buttons to avoid conflicts with auto-fill
+        forgot_password = st.form_submit_button("🔑 Forgot Password?", use_container_width=False)
+        
+        # Handle login
+        if submitted:
+            try:
+                auth_response = supabase.auth.sign_in_with_password({
+                    "email": email,
+                    "password": password
+                })
+                if not auth_response.user:
+                    st.error("Invalid email or password.")
+                    return
+                st.session_state.user = auth_response.user
+                
+                # If remember me is checked, we don't need to do anything special
+                # as Supabase will handle the refresh token automatically
+                
+                st.success("Logged in!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Login failed: {e}")
+        
+        # Handle forgot password
+        if forgot_password:
+            if not email:
+                st.error("Please enter your email address first, then click 'Forgot Password?'")
+            else:
+                try:
+                    with st.spinner("Sending password reset email..."):
+                        supabase.auth.reset_password_email(email)
+                    st.success("✅ Password reset email sent!")
+                    st.info("""
+                    📧 **Check your email for password reset instructions.**
+                    
+                    **Next steps:**
+                    1. Check your email inbox (and spam folder)
+                    2. Click the password reset link
+                    3. Create a new password
+                    4. Return here to log in with your new password
+                    """)
+                except Exception as e:
+                    st.error(f"Failed to send password reset email: {e}")
 
 def signup():
     # Display logo
     st.markdown('<div style="margin-left: -20px;">', unsafe_allow_html=True)
-    st.image("logo.png", width=600)
+    
+    # Load logo with error handling
+    logo_path = Path("logo_optimized.png")
+    if logo_path.exists():
+        try:
+            st.image(str(logo_path), width=600)
+        except Exception as e:
+            st.error(f"Error loading logo: {e}")
+            st.markdown("### 💰 Expense Tracker")
+    else:
+        st.markdown("### 💰 Expense Tracker")
+    
     st.markdown('</div>', unsafe_allow_html=True)
     
     st.header("📝 Sign Up")
@@ -331,7 +356,18 @@ if st.session_state.user is None:
 # 3. User is authenticated: show main app
 # Display logo
 st.markdown('<div style="margin-left: -20px;">', unsafe_allow_html=True)
-st.image("logo.png", width=600)
+
+# Load logo with error handling
+logo_path = Path("logo_optimized.png")
+if logo_path.exists():
+    try:
+        st.image(str(logo_path), width=600)
+    except Exception as e:
+        st.error(f"Error loading logo: {e}")
+        st.markdown("### 💰 Expense Tracker")
+else:
+    st.markdown("### 💰 Expense Tracker")
+
 st.markdown('</div>', unsafe_allow_html=True)
 
 # Sidebar
@@ -413,12 +449,27 @@ with tab1:
     if df.empty:
         st.info("No expenses to analyze. Add some expenses to see analytics!")
     else:
-        # Get user settings for excluded categories (but don't show UI yet)
+        # Get user settings for excluded categories
         try:
             user_settings = get_user_settings(user_id)
             excluded_categories = user_settings.get('excluded_dashboard_categories', [])
+            
+            # Initialize session state for settings if not exists
+            if 'settings_initialized' not in st.session_state:
+                st.session_state.settings_initialized = False
+            
+            # Set rent to be excluded by default if no preferences are set (only once)
+            if not excluded_categories and not st.session_state.settings_initialized:
+                excluded_categories = ['🏠 Rent']
+                user_settings['excluded_dashboard_categories'] = excluded_categories
+                update_user_settings(user_id, user_settings)
+                st.session_state.settings_initialized = True
+            elif excluded_categories:
+                # User has existing preferences, mark as initialized
+                st.session_state.settings_initialized = True
+                
         except Exception as e:
-            excluded_categories = []
+            excluded_categories = ['🏠 Rent']  # Default to excluding rent
         
         # Get available categories for this user
         available_categories = get_available_categories(user_id)
@@ -434,210 +485,191 @@ with tab1:
             st.warning("⚠️ All categories are excluded. Please enable at least one category to view analytics.")
             st.stop()
         
-        # ==================== AVERAGING TOGGLE ====================
-        st.markdown("---")
-        
-        # Check if user has any averaging expenses set up
-        averaging_expenses = get_averaging_expenses(user_id)
-        
-        if averaging_expenses:
-            st.markdown("### 📊 View Mode")
-            
-            # Show info about averaging
-            avg_info = f"📈 **{len(averaging_expenses)} expenses** are set up for averaging"
-            for exp in averaging_expenses:
-                avg_info += f"\n• {exp['name']}: ¥{exp['original_amount']:,} ({exp['frequency']}) → ¥{exp['monthly_amount']:,.0f}/month"
-            
-            with st.expander("ℹ️ About Averaging", expanded=False):
-                st.markdown(avg_info)
-                st.markdown("**Actual View**: Shows real payments when they happened (spikes)")
-                st.markdown("**Averaged View**: Shows smooth monthly budgeting amounts")
-            
-            # Toggle between actual and averaged view
-            view_mode = st.radio(
-                "Choose view mode:",
-                ["📅 Actual Payments", "📊 Averaged Budgeting"],
-                horizontal=True,
-                help="Switch between actual payment dates and smooth monthly averages"
-            )
-            
-            use_averaging = view_mode == "📊 Averaged Budgeting"
-            
-            # Apply averaging if selected
-            if use_averaging:
-                df_to_use = apply_expense_averaging(filtered_df, user_id, include_averaging=True)
-                st.info("💡 **Averaged View**: Large periodic payments are spread evenly across months for better budgeting")
-            else:
-                df_to_use = filtered_df
-                st.info("💡 **Actual View**: Showing real payment dates and amounts")
-        else:
-            df_to_use = filtered_df
-            st.info("💡 **Tip**: Set up recurring expenses with averaging to see smooth monthly budgeting views")
+        # ==================== APPLY DEFAULT AVERAGING ====================
+        # Default to averaging for quarterly/yearly expenses
+        df_to_use = apply_expense_averaging(filtered_df, user_id, include_averaging=True)
         
         # Make sure date is datetime
         df_to_use['date'] = pd.to_datetime(df_to_use['date'])
 
-        today = pd.Timestamp.now()
-        current_month_df = df_to_use[df_to_use['date'].dt.to_period('M') == today.to_period('M')]
-        current_year_df = df_to_use[df_to_use['date'].dt.year == today.year]
-        current_week = today.isocalendar().week
-        current_year_num = today.isocalendar().year
+    # ==================== KPI CALCULATIONS ====================
+    # Calculate KPIs after all filters are applied
+    today = pd.Timestamp.now()
+    current_month_df = df_to_use[df_to_use['date'].dt.to_period('M') == today.to_period('M')]
+    current_year_df = df_to_use[df_to_use['date'].dt.year == today.year]
+    current_week = today.isocalendar().week
+    current_year_num = today.isocalendar().year
 
-        current_week_df = df_to_use[
-            (df_to_use['date'].dt.isocalendar().week == current_week) &
-            (df_to_use['date'].dt.isocalendar().year == current_year_num)
-        ]
+    current_week_df = df_to_use[
+        (df_to_use['date'].dt.isocalendar().week == current_week) &
+        (df_to_use['date'].dt.isocalendar().year == current_year_num)
+    ]
 
-        monthly_spending = current_month_df['amount'].sum()
-        weekly_spending = current_week_df['amount'].sum()
-        daily_avg = df_to_use.groupby('date')['amount'].sum().mean()
-        yearly_spending = current_year_df['amount'].sum()
+    monthly_spending = current_month_df['amount'].sum()
+    weekly_spending = current_week_df['amount'].sum()
+    daily_avg = df_to_use.groupby('date')['amount'].sum().mean()
+    yearly_spending = current_year_df['amount'].sum()
 
-        # KPI Columns: Monthly, Weekly, Daily Average, Yearly
-        kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-        
-        # Create suffix based on filters and averaging
-        suffix_parts = []
-        if excluded_categories:
-            suffix_parts.append("filtered")
-        if averaging_expenses and 'use_averaging' in locals() and use_averaging:
-            suffix_parts.append("averaged")
-        
-        filter_suffix = f" ({', '.join(suffix_parts)})" if suffix_parts else ""
-        
-        with kpi1:
-            st.metric("Monthly Spending" + filter_suffix, f"¥{monthly_spending:,.0f}")
-        with kpi2:
-            st.metric("Weekly Spending" + filter_suffix, f"¥{weekly_spending:,.0f}")
-        with kpi3:
-            st.metric("Daily Average" + filter_suffix, f"¥{daily_avg:,.0f}")
-        with kpi4:
-            st.metric("Yearly Spending" + filter_suffix, f"¥{yearly_spending:,.0f}")
+    # KPI Columns: Monthly, Weekly, Daily Average, Yearly
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    
+    with kpi1:
+        st.metric("Monthly Spending", f"¥{monthly_spending:,.0f}")
+    with kpi2:
+        st.metric("Weekly Spending", f"¥{weekly_spending:,.0f}")
+    with kpi3:
+        st.metric("Daily Average", f"¥{daily_avg:,.0f}")
+    with kpi4:
+        st.metric("Yearly Spending", f"¥{yearly_spending:,.0f}")
 
-        st.markdown("---")
-        
-        # Create daily spending trend with daily totals
-        daily_totals = df_to_use.groupby('date')['amount'].sum().reset_index()
-        daily_totals = daily_totals.sort_values('date')
-        
-        # Create the daily spending trend chart
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=daily_totals['date'],
-            y=daily_totals['amount'],
-            mode='lines+markers',
-            name='Daily Total',
-            line=dict(color='#00A6FB', width=2),
-            marker=dict(size=8, color='#0582CA')
-        ))
-        
-        fig.update_layout(
-            title='Daily Spending Trend',
-            xaxis_title='Date',
-            yaxis_title='Amount (¥)',
-            hovermode='x unified',
-            showlegend=False,
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            xaxis=dict(
-                showgrid=True,
-                gridcolor='rgba(128,128,128,0.2)',
-                tickformat='%Y-%m-%d'
-            ),
-            yaxis=dict(
-                showgrid=True,
-                gridcolor='rgba(128,128,128,0.2)',
-                tickprefix='¥',
-                tickformat=',d'
-            )
+    st.markdown("---")
+    
+    # Create daily spending trend with daily totals
+    daily_totals = df_to_use.groupby('date')['amount'].sum().reset_index()
+    daily_totals = daily_totals.sort_values('date')
+    
+    # Create the daily spending trend chart
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=daily_totals['date'],
+        y=daily_totals['amount'],
+        mode='lines+markers',
+        name='Daily Total',
+        line=dict(color='#00A6FB', width=2),
+        marker=dict(size=8, color='#0582CA')
+    ))
+    
+    fig.update_layout(
+        title='Daily Spending Trend',
+        xaxis_title='Date',
+        yaxis_title='Amount (¥)',
+        hovermode='x unified',
+        showlegend=False,
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        xaxis=dict(
+            showgrid=True,
+            gridcolor='rgba(128,128,128,0.2)',
+            tickformat='%Y-%m-%d'
+        ),
+        yaxis=dict(
+            showgrid=True,
+            gridcolor='rgba(128,128,128,0.2)',
+            tickprefix='¥',
+            tickformat=',d'
         )
-        
-        st.plotly_chart(fig, use_container_width=True, key="daily_spending")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.plotly_chart(create_spending_by_category_pie(df_to_use.to_dict('records'), user_id=user_id), use_container_width=True, key="dashboard_category_pie")
-        with col2:
-            st.plotly_chart(create_top_merchants_chart(df_to_use), use_container_width=True, key="dashboard_merchants")
-        st.plotly_chart(create_monthly_average_chart(df_to_use), use_container_width=True, key="monthly_average")
+    )
+    
+    st.plotly_chart(fig, use_container_width=True, key="daily_spending")
+    
+    # Category pie chart - full width for better visibility
+    st.plotly_chart(create_spending_by_category_pie(df_to_use.to_dict('records'), user_id=user_id), use_container_width=True, key="dashboard_category_pie")
+    
+    # Top merchants chart - full width for better visibility
+    st.plotly_chart(create_top_merchants_chart(df_to_use), use_container_width=True, key="dashboard_merchants")
+    
+    # Monthly average chart
+    st.plotly_chart(create_monthly_average_chart(df_to_use), use_container_width=True, key="monthly_average")
 
-        # ==================== CATEGORY FILTERS SECTION ====================
-        st.markdown("---")
+    # ==================== CATEGORY FILTERS SECTION ====================
+    st.markdown("---")
+    
+    # Show current filter status
+    if excluded_categories:
+        excluded_total = df[df['category'].isin(excluded_categories)]['amount'].sum()
+        st.info(f"📊 **Filtered View**: Excluding {len(excluded_categories)} categories (¥{excluded_total:,.0f} hidden)")
+    
+    # Category filter dropdown
+    with st.expander("🎯 **Category Filter - Control what categories to show**", expanded=False):
+        st.markdown("**💡 Tip**: Rent is filtered out by default to focus on day-to-day spending. Check the Rent box below to include it in your analysis.")
         
-        # Show current filter status if any categories are excluded
-        if excluded_categories:
-            excluded_total = df[df['category'].isin(excluded_categories)]['amount'].sum()
-            st.info(f"📊 **Filtered View**: Excluding {len(excluded_categories)} categories (¥{excluded_total:,.0f} hidden)")
+        # Show categories as checkboxes in a cleaner layout
+        st.markdown("**Select categories to show:**")
         
-        # Expandable category filter section
-        with st.expander("🎯 **Want to see spending without fixed expenses like rent?**", expanded=False):
-            st.markdown("**💡 Filter out recurring expenses to focus on your discretionary spending**")
-            
-            # Quick preset buttons for common use cases
-            preset_col1, preset_col2, preset_col3 = st.columns(3)
-            with preset_col1:
-                if st.button("🏠 Hide Housing & Bills", key="preset_fixed"):
-                    try:
-                        fixed_categories = [cat for cat in available_categories if any(keyword in cat.lower() for keyword in ['housing', 'rent', 'bills', 'utilities'])]
-                        if 'user_settings' not in locals():
-                            user_settings = get_user_settings(user_id)
-                        user_settings['excluded_dashboard_categories'] = fixed_categories
-                        update_user_settings(user_id, user_settings)
-                        st.rerun()
-                    except Exception as e:
-                        st.error("Please add the excluded_dashboard_categories column to your database first.")
-            
-            with preset_col2:
-                if st.button("🎉 Show Fun & Flexible", key="preset_discretionary"):
-                    try:
-                        keep_categories = [cat for cat in available_categories if any(keyword in cat.lower() for keyword in ['food', 'dining', 'shopping', 'entertainment', 'coffee', 'fun', 'retail', 'treats', 'eats'])]
-                        excluded = [cat for cat in available_categories if cat not in keep_categories]
-                        if 'user_settings' not in locals():
-                            user_settings = get_user_settings(user_id)
-                        user_settings['excluded_dashboard_categories'] = excluded
-                        update_user_settings(user_id, user_settings)
-                        st.rerun()
-                    except Exception as e:
-                        st.error("Please add the excluded_dashboard_categories column to your database first.")
-            
-            with preset_col3:
-                if st.button("🔄 Show All Categories", key="preset_all"):
-                    try:
-                        if 'user_settings' not in locals():
-                            user_settings = get_user_settings(user_id)
-                        user_settings['excluded_dashboard_categories'] = []
-                        update_user_settings(user_id, user_settings)
-                        st.rerun()
-                    except Exception as e:
-                        st.error("Please add the excluded_dashboard_categories column to your database first.")
-            
-            st.markdown("---")
-            st.markdown("**🎛️ Or customize individual categories:**")
-            
-            # Individual category toggles in a more compact layout
-            toggle_cols = st.columns(3)
-            col_index = 0
-            updated_excluded = []
-            
-            for category in available_categories:
-                with toggle_cols[col_index % 3]:
-                    # Toggle is ON when category is NOT excluded (shown)
-                    is_shown = st.checkbox(
-                        f"Show {category}",
-                        value=category not in excluded_categories,
-                        key=f"show_{category}"
-                    )
-                    if not is_shown:
-                        updated_excluded.append(category)
-                col_index += 1
-            
-            # Update user settings if exclusions changed
+        # Define callback function to track changes
+        def on_category_change():
+            st.session_state.category_filter_changed = True
+        
+        # Create columns for better layout
+        num_categories = len(available_categories)
+        cols_per_row = 3
+        num_rows = (num_categories + cols_per_row - 1) // cols_per_row
+        
+        updated_excluded = []
+        category_index = 0
+        
+        for row in range(num_rows):
+            cols = st.columns(cols_per_row)
+            for col_idx in range(cols_per_row):
+                if category_index < num_categories:
+                    category = available_categories[category_index]
+                    with cols[col_idx]:
+                        # Special styling for rent category
+                        if category == "🏠 Rent":
+                            is_shown = st.checkbox(
+                                f"✅ {category}",
+                                value=category not in excluded_categories,
+                                key=f"show_{category}",
+                                help="💡 Include rent to see total spending including fixed costs",
+                                on_change=on_category_change
+                            )
+                        else:
+                            is_shown = st.checkbox(
+                                f"{category}",
+                                value=category not in excluded_categories,
+                                key=f"show_{category}",
+                                on_change=on_category_change
+                            )
+                        
+                        if not is_shown:
+                            updated_excluded.append(category)
+                    category_index += 1
+        
+        # Quick preset buttons
+        st.markdown("**Quick Filters:**")
+        preset_col1, preset_col2, preset_col3 = st.columns(3)
+        
+        with preset_col1:
+            if st.button("🏠 Hide Rent Only", key="preset_rent_only"):
+                try:
+                    user_settings['excluded_dashboard_categories'] = ['🏠 Rent']
+                    update_user_settings(user_id, user_settings)
+                    st.session_state.category_filter_changed = False  # Reset flag
+                    st.rerun()
+                except Exception as e:
+                    st.error("Error updating settings")
+        
+        with preset_col2:
+            if st.button("🎉 Show All", key="preset_show_all"):
+                try:
+                    user_settings['excluded_dashboard_categories'] = []
+                    update_user_settings(user_id, user_settings)
+                    st.session_state.category_filter_changed = False  # Reset flag
+                    st.rerun()
+                except Exception as e:
+                    st.error("Error updating settings")
+        
+        with preset_col3:
+            if st.button("🍽️ Food & Fun Only", key="preset_discretionary"):
+                try:
+                    keep_categories = [cat for cat in available_categories if any(keyword in cat.lower() for keyword in ['food', 'dining', 'shopping', 'entertainment', 'coffee', 'fun', 'retail', 'treats', 'eats', 'groceries'])]
+                    excluded = [cat for cat in available_categories if cat not in keep_categories]
+                    user_settings['excluded_dashboard_categories'] = excluded
+                    update_user_settings(user_id, user_settings)
+                    st.session_state.category_filter_changed = False  # Reset flag
+                    st.rerun()
+                except Exception as e:
+                    st.error("Error updating settings")
+        
+        # Update settings if changed
+        # Only update if the user actually interacted with checkboxes
+        # Use session state to track if we should update
+        if 'category_filter_changed' in st.session_state and st.session_state.category_filter_changed:
             if updated_excluded != excluded_categories:
                 try:
-                    if 'user_settings' not in locals():
-                        user_settings = get_user_settings(user_id)
                     user_settings['excluded_dashboard_categories'] = updated_excluded
                     update_user_settings(user_id, user_settings)
+                    st.session_state.category_filter_changed = False  # Reset the flag
                     st.rerun()
                 except Exception as e:
                     st.error("⚠️ **Database Setup Required**: Please add the excluded_dashboard_categories column to your database.")
@@ -648,6 +680,8 @@ ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS excluded_dashboard_categories
 CREATE INDEX IF NOT EXISTS idx_user_settings_excluded_categories ON user_settings USING GIN (excluded_dashboard_categories);
 COMMENT ON COLUMN user_settings.excluded_dashboard_categories IS 'Array of category names to exclude from dashboard view';
                     """, language="sql")
+            else:
+                st.session_state.category_filter_changed = False  # Reset the flag even if no change needed
 
 # Initialize session state for amount field
 if 'expense_amount' not in st.session_state:
@@ -1103,25 +1137,25 @@ with tab4:
                                     if st.button("🗑️", key=delete_key, help="Delete expense"):
                                         st.session_state[confirm_key] = True
                                         st.rerun()
-                                else:
-                                    if st.button("✅", key=f"yes_{row['id']}", help="Confirm delete"):
-                                        try:
-                                            with st.spinner("Deleting expense..."):
-                                                delete_expense(user_id, row['id'])
-                                                del st.session_state[confirm_key]
-                                                show_success("Expense deleted successfully!")
-                                                st.rerun()
-                                        except DatabaseError as e:
-                                            show_error(f"Error deleting expense: {str(e)}")
                         
-                        # Confirm delete warning
+                        # Confirm delete warning with proper button layout
                         if confirm_delete:
                             st.warning("⚠️ Are you sure you want to delete this expense?")
-                            col_cancel, col_space = st.columns([1, 3])
+                            col_cancel, col_confirm = st.columns(2)
                             with col_cancel:
-                                if st.button("❌ Cancel", key=f"cancel_{row['id']}"):
+                                if st.button("❌ Cancel", key=f"cancel_{row['id']}", use_container_width=True):
                                     del st.session_state[confirm_key]
                                     st.rerun()
+                            with col_confirm:
+                                if st.button("✅ Confirm Delete", key=f"yes_{row['id']}", use_container_width=True, type="primary"):
+                                    try:
+                                        with st.spinner("Deleting expense..."):
+                                            delete_expense(user_id, row['id'])
+                                            del st.session_state[confirm_key]
+                                            show_success("Expense deleted successfully!")
+                                            st.rerun()
+                                    except DatabaseError as e:
+                                        show_error(f"Error deleting expense: {str(e)}")
                 
                 else:
                     # Edit mode
@@ -1696,17 +1730,33 @@ with tab6:
         st.markdown("---")
         
         # Debug section to clear custom categories
-        st.markdown("### 🔧 Debug")
-        if st.button("🗑️ Clear All Custom Categories", type="secondary"):
-            try:
-                settings = get_user_settings(user_id)
-                settings["custom_categories"] = {}  # Clear custom categories
-                update_user_settings(user_id, settings)
-                st.cache_data.clear()  # Clear cache
-                st.success("✅ All custom categories cleared! Default categories restored.")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error clearing categories: {str(e)}")
+        st.markdown("### 🔧 Debug & Sync")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔄 Sync with Latest Categories", type="primary"):
+                try:
+                    settings = get_user_settings(user_id)
+                    settings["custom_categories"] = {}  # Clear to force sync
+                    update_user_settings(user_id, settings)
+                    sync_default_categories_with_user_settings(user_id)
+                    st.cache_data.clear()  # Clear cache
+                    st.success("✅ Categories synced with latest defaults! Now you should see Rent, Housing, and Groceries as separate categories.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error syncing categories: {str(e)}")
+        
+        with col2:
+            if st.button("🗑️ Clear All Custom Categories", type="secondary"):
+                try:
+                    settings = get_user_settings(user_id)
+                    settings["custom_categories"] = {}  # Clear custom categories
+                    update_user_settings(user_id, settings)
+                    st.cache_data.clear()  # Clear cache
+                    st.success("✅ All custom categories cleared! Default categories restored.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error clearing categories: {str(e)}")
         
         st.markdown("---")
         
@@ -1993,100 +2043,229 @@ with tab7:
             st.info("No recurring expenses set up yet. Click 'Add New' to create your first recurring expense!")
         else:
             for recurring in recurring_expenses:
+                # Check if this recurring expense is in edit mode
+                edit_mode = st.session_state.get(f"edit_recurring_mode_{recurring['id']}", False)
+                
                 with st.expander(f"{recurring['name']} - ¥{recurring['amount']:,.0f} ({recurring['frequency']})"):
-                    col1, col2, col3 = st.columns([2, 1, 1])
-                    
-                    with col1:
-                        st.write(f"**Merchant:** {recurring['merchant']}")
-                        st.write(f"**Category:** {recurring['category']}")
-                        st.write(f"**Amount:** ¥{recurring['amount']:,.0f}")
-                        st.write(f"**Frequency:** {recurring['frequency'].title()}")
-                        st.write(f"**Next Due:** {recurring['next_due_date']}")
-                        st.write(f"**Status:** {'🟢 Active' if recurring['is_active'] else '🔴 Inactive'}")
-                        if recurring['averaging_type'] != 'none':
-                            st.write(f"**Averaging:** {recurring['averaging_type'].title()}")
-                    
-                    with col2:
-                        if st.button("✏️ Edit", key=f"edit_recurring_{recurring['id']}"):
-                            st.session_state[f"edit_recurring_{recurring['id']}"] = True
-                            st.rerun()
-                    
-                    with col3:
-                        if st.button("🗑️ Delete", key=f"delete_recurring_{recurring['id']}"):
-                            try:
-                                delete_recurring_expense(user_id, recurring['id'])
-                                st.success("✅ Recurring expense deleted!")
-                                time.sleep(1)
+                    if not edit_mode:
+                        # Display mode
+                        col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+                        
+                        with col1:
+                            st.write(f"**Merchant:** {recurring['merchant']}")
+                            st.write(f"**Category:** {recurring['category']}")
+                            st.write(f"**Amount:** ¥{recurring['amount']:,.0f}")
+                            st.write(f"**Frequency:** {recurring['frequency'].title()}")
+                            st.write(f"**Next Due:** {recurring['next_due_date']}")
+                            st.write(f"**Status:** {'🟢 Active' if recurring['is_active'] else '🔴 Inactive'}")
+                            if recurring['averaging_type'] != 'none':
+                                st.write(f"**Averaging:** {recurring['averaging_type'].title()}")
+                        
+                        with col2:
+                            if st.button("✏️ Edit", key=f"edit_recurring_{recurring['id']}"):
+                                st.session_state[f"edit_recurring_mode_{recurring['id']}"] = True
                                 st.rerun()
-                            except Exception as e:
-                                st.error(f"Error deleting recurring expense: {str(e)}")
+                        
+                        with col3:
+                            # Add Generate Now button
+                            if st.button("⚡ Generate Now", key=f"generate_now_{recurring['id']}", help="Create an expense from this recurring template"):
+                                try:
+                                    expense_id = generate_expense_from_recurring(user_id, recurring['id'])
+                                    st.success(f"✅ Expense created from {recurring['name']}!")
+                                    time.sleep(1)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error generating expense: {str(e)}")
+                        
+                        with col4:
+                            if st.button("🗑️ Delete", key=f"delete_recurring_{recurring['id']}"):
+                                try:
+                                    delete_recurring_expense(user_id, recurring['id'])
+                                    st.success("✅ Recurring expense deleted!")
+                                    time.sleep(1)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error deleting recurring expense: {str(e)}")
+                    else:
+                        # Edit mode - show edit form in place
+                        with st.form(f"edit_recurring_form_{recurring['id']}"):
+                            st.markdown("### ✏️ Edit Recurring Expense")
+                            
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                edit_name = st.text_input("Name", value=recurring['name'])
+                                edit_merchant = st.text_input("Merchant", value=recurring['merchant'])
+                                edit_amount = st.number_input("Amount (¥)", value=float(recurring['amount']), min_value=0.0, step=100.0)
+                            with col2:
+                                edit_frequency = st.selectbox(
+                                    "Frequency",
+                                    options=["monthly", "weekly", "quarterly", "yearly"],
+                                    index=["monthly", "weekly", "quarterly", "yearly"].index(recurring['frequency']) if recurring['frequency'] in ["monthly", "weekly", "quarterly", "yearly"] else 0,
+                                    format_func=lambda x: x.title()
+                                )
+                                
+                                available_categories = get_available_categories(user_id)
+                                try:
+                                    category_index = available_categories.index(recurring['category'])
+                                except ValueError:
+                                    category_index = 0
+                                edit_category = st.selectbox("Category", options=available_categories, index=category_index)
+                                
+                                edit_payment_method = st.selectbox(
+                                    "Payment Method",
+                                    options=["Credit Card", "Debit Card", "Cash", "Digital Wallet", "Other"],
+                                    index=["Credit Card", "Debit Card", "Cash", "Digital Wallet", "Other"].index(recurring['payment_method']) if recurring['payment_method'] in ["Credit Card", "Debit Card", "Cash", "Digital Wallet", "Other"] else 0
+                                )
+                            
+                            col3, col4 = st.columns(2)
+                            with col3:
+                                edit_start_date = st.date_input("Start Date", value=pd.to_datetime(recurring['start_date']).date())
+                            with col4:
+                                edit_end_date = st.date_input("End Date (Optional)", value=pd.to_datetime(recurring['end_date']).date() if recurring['end_date'] else None)
+                            
+                            # Averaging option for quarterly/yearly
+                            if edit_frequency in ['quarterly', 'yearly']:
+                                edit_averaging = st.selectbox(
+                                    "Averaging Type",
+                                    options=['monthly', 'none'],
+                                    index=['monthly', 'none'].index(recurring['averaging_type']) if recurring['averaging_type'] in ['monthly', 'none'] else 0,
+                                    format_func=lambda x: 'Average across months (Recommended)' if x == 'monthly' else 'Show as actual payments',
+                                    help="Quarterly and yearly expenses are averaged by default for better budgeting"
+                                )
+                            else:
+                                edit_averaging = 'none'
+                            
+                            edit_description = st.text_area("Description (optional)", value=recurring['description'] if recurring['description'] else "")
+                            
+                            col5, col6 = st.columns(2)
+                            with col5:
+                                if st.form_submit_button("💾 Save Changes"):
+                                    try:
+                                        if not edit_name.strip():
+                                            st.error("Name is required")
+                                        elif not edit_merchant.strip():
+                                            st.error("Merchant is required")
+                                        elif edit_amount <= 0:
+                                            st.error("Amount must be greater than 0")
+                                        else:
+                                            recurring_data = {
+                                                "name": edit_name.strip(),
+                                                "merchant": edit_merchant.strip(),
+                                                "amount": edit_amount,
+                                                "category": edit_category,
+                                                "payment_method": edit_payment_method,
+                                                "frequency": edit_frequency,
+                                                "start_date": edit_start_date,
+                                                "end_date": edit_end_date,
+                                                "averaging_type": edit_averaging,
+                                                "description": edit_description.strip() if edit_description else None
+                                            }
+                                            
+                                            update_recurring_expense(user_id, recurring['id'], recurring_data)
+                                            del st.session_state[f"edit_recurring_mode_{recurring['id']}"]
+                                            st.success("✅ Recurring expense updated successfully!")
+                                            time.sleep(1)
+                                            st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Error updating recurring expense: {str(e)}")
+                            
+                            with col6:
+                                if st.form_submit_button("❌ Cancel"):
+                                    del st.session_state[f"edit_recurring_mode_{recurring['id']}"]
+                                    st.rerun()
     
     # Add New tab
     with recurring_tabs[1]:
         st.markdown("### ➕ Add New Recurring Expense")
         
-        with st.form("add_recurring_form"):
-            col1, col2 = st.columns(2)
-            with col1:
-                recurring_name = st.text_input("Name", placeholder="e.g., Monthly Rent")
-                recurring_merchant = st.text_input("Merchant", placeholder="e.g., Property Management")
-            with col2:
-                recurring_amount = st.number_input("Amount (¥)", min_value=0.0, step=100.0)
-                recurring_frequency = st.selectbox(
-                    "Frequency",
-                    options=["monthly", "weekly", "quarterly", "yearly"],
-                    format_func=lambda x: x.title()
-                )
+        # First, get the frequency to determine if averaging options should be shown
+        col1, col2 = st.columns(2)
+        with col1:
+            recurring_name = st.text_input("Name", placeholder="e.g., Monthly Rent", key="recurring_name")
+            recurring_merchant = st.text_input("Merchant", placeholder="e.g., Property Management", key="recurring_merchant")
+        with col2:
+            recurring_amount = st.number_input("Amount (¥)", min_value=0.0, step=100.0, key="recurring_amount")
+            recurring_frequency = st.selectbox(
+                "Frequency",
+                options=["monthly", "weekly", "quarterly", "yearly"],
+                format_func=lambda x: x.title(),
+                key="recurring_frequency"
+            )
+        
+        col3, col4 = st.columns(2)
+        with col3:
+            available_categories = get_available_categories(user_id)
+            recurring_category = st.selectbox("Category", options=available_categories, key="recurring_category")
+        with col4:
+            recurring_payment_method = st.selectbox(
+                "Payment Method",
+                options=["Credit Card", "Debit Card", "Cash", "Digital Wallet", "Other"],
+                key="recurring_payment_method"
+            )
+        
+        col5, col6 = st.columns(2)
+        with col5:
+            recurring_start_date = st.date_input("Start Date", value=date.today(), key="recurring_start_date")
+        with col6:
+            recurring_end_date = st.date_input("End Date (Optional)", value=None, key="recurring_end_date")
+        
+        # Averaging option for quarterly/yearly - now reactive!
+        if recurring_frequency in ['quarterly', 'yearly']:
+            st.markdown("**💡 Averaging (Default for Quarterly/Yearly):**")
             
-            col3, col4 = st.columns(2)
-            with col3:
-                available_categories = get_available_categories(user_id)
-                recurring_category = st.selectbox("Category", options=available_categories)
-            with col4:
-                recurring_payment_method = st.selectbox(
-                    "Payment Method",
-                    options=["Credit Card", "Debit Card", "Cash", "Digital Wallet", "Other"]
-                )
-            
-            col5, col6 = st.columns(2)
-            with col5:
-                recurring_start_date = st.date_input("Start Date", value=date.today())
-            with col6:
-                recurring_end_date = st.date_input("End Date (Optional)", value=None)
-            
-            # Averaging option for quarterly/yearly
-            if recurring_frequency in ['quarterly', 'yearly']:
-                st.markdown("**💡 Averaging Example:**")
-                
-                # Calculate example amounts
-                if recurring_amount > 0:
-                    monthly_equiv = calculate_monthly_equivalent(recurring_amount, recurring_frequency)
-                    example_text = f"¥{recurring_amount:,.0f} {recurring_frequency} = ¥{monthly_equiv:,.0f} per month"
-                else:
-                    example_text = "Enter an amount to see the monthly equivalent"
-                
-                st.info(f"📊 {example_text}")
-                
-                recurring_averaging = st.selectbox(
-                    "Averaging Type",
-                    options=['none', 'monthly'],
-                    format_func=lambda x: 'Show as actual payments' if x == 'none' else 'Average across months',
-                    help="Choose whether to show large payments as spikes or spread them evenly for budgeting"
-                )
+            # Calculate example amounts
+            if recurring_amount > 0:
+                monthly_equiv = calculate_monthly_equivalent(recurring_amount, recurring_frequency)
+                example_text = f"¥{recurring_amount:,.0f} {recurring_frequency} = ¥{monthly_equiv:,.0f} per month"
             else:
-                recurring_averaging = 'none'
+                example_text = "Enter an amount to see the monthly equivalent"
             
-            recurring_description = st.text_area("Description (optional)")
+            st.info(f"📊 {example_text}")
             
-            if st.form_submit_button("💾 Add Recurring Expense"):
-                try:
-                    if not recurring_name.strip():
-                        st.error("Name is required")
-                    elif not recurring_merchant.strip():
-                        st.error("Merchant is required")
-                    elif recurring_amount <= 0:
-                        st.error("Amount must be greater than 0")
-                    else:
+            recurring_averaging = st.selectbox(
+                "Averaging Type",
+                options=['monthly', 'none'],
+                index=0,  # Default to 'monthly' (first option)
+                format_func=lambda x: 'Average across months (Recommended)' if x == 'monthly' else 'Show as actual payments',
+                help="Quarterly and yearly expenses are averaged by default for better budgeting",
+                key="recurring_averaging"
+            )
+        else:
+            recurring_averaging = 'none'
+        
+        recurring_description = st.text_area("Description (optional)", key="recurring_description")
+        
+        if st.button("💾 Add Recurring Expense", type="primary", use_container_width=True):
+            try:
+                if not recurring_name.strip():
+                    st.error("Name is required")
+                elif not recurring_merchant.strip():
+                    st.error("Merchant is required")
+                elif recurring_amount <= 0:
+                    st.error("Amount must be greater than 0")
+                else:
+                    # Check for potential duplicates
+                    existing_recurring = get_recurring_expenses(user_id)
+                    duplicate_found = False
+                    
+                    for existing in existing_recurring:
+                        if (existing['merchant'].lower() == recurring_merchant.strip().lower() and
+                            existing['amount'] == recurring_amount and
+                            existing['frequency'] == recurring_frequency and
+                            existing['is_active']):
+                            duplicate_found = True
+                            st.warning(f"⚠️ **Potential duplicate found**: A similar recurring expense already exists for {existing['merchant']} (¥{existing['amount']:,.0f} {existing['frequency']})")
+                            
+                            col_cancel, col_add_anyway = st.columns(2)
+                            with col_cancel:
+                                if st.button("❌ Cancel", key="cancel_duplicate"):
+                                    st.rerun()
+                            with col_add_anyway:
+                                if st.button("➕ Add Anyway", key="add_anyway", type="secondary"):
+                                    duplicate_found = False  # Allow adding
+                                    break
+                    
+                    if not duplicate_found:
                         recurring_data = {
                             "name": recurring_name,
                             "merchant": recurring_merchant,
@@ -2101,11 +2280,27 @@ with tab7:
                         }
                         
                         recurring_id = add_recurring_expense(user_id, recurring_data)
-                        st.success("✅ Recurring expense added successfully!")
+                        
+                        # Auto-generate the first expense for better UX
+                        try:
+                            first_expense_id = generate_expense_from_recurring(user_id, recurring_id)
+                            st.success("✅ Recurring expense added and first payment recorded!")
+                            st.info(f"💡 Your {recurring_name} has been added to this month's expenses")
+                            
+                            # Clear form fields
+                            for key in ["recurring_name", "recurring_merchant", "recurring_amount", "recurring_frequency", 
+                                       "recurring_category", "recurring_payment_method", "recurring_start_date", 
+                                       "recurring_end_date", "recurring_averaging", "recurring_description"]:
+                                if key in st.session_state:
+                                    del st.session_state[key]
+                            
+                        except Exception as e:
+                            st.warning(f"✅ Recurring expense added, but couldn't auto-generate first expense: {str(e)}")
+                        
                         time.sleep(1)
                         st.rerun()
-                except Exception as e:
-                    st.error(f"Error adding recurring expense: {str(e)}")
+            except Exception as e:
+                st.error(f"Error adding recurring expense: {str(e)}")
     
     # Suggestions tab
     with recurring_tabs[2]:
@@ -2144,7 +2339,14 @@ with tab7:
                             
                             try:
                                 recurring_id = add_recurring_expense(user_id, recurring_data)
-                                st.success("✅ Recurring expense added!")
+                                
+                                # Auto-generate the first expense for better UX
+                                try:
+                                    first_expense_id = generate_expense_from_recurring(user_id, recurring_id)
+                                    st.success("✅ Recurring expense added and first payment recorded!")
+                                except Exception as e:
+                                    st.warning(f"✅ Recurring expense added, but couldn't auto-generate first expense: {str(e)}")
+                                
                                 time.sleep(1)
                                 st.rerun()
                             except Exception as e:

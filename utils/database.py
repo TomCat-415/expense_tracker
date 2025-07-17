@@ -155,11 +155,30 @@ def update_expense(user_id: str, expense_id: str, expense_data: Dict) -> None:
 
 def delete_expense(user_id: str, expense_id: str) -> None:
     try:
-        receipt_path_result = supabase.table("expenses").select("receipt_path").eq("id", expense_id).eq("user_id", user_id).single().execute()
-        receipt_path = receipt_path_result.data.get("receipt_path") if receipt_path_result.data else None
+        # Get expense details including recurring_id before deleting
+        expense_result = supabase.table("expenses").select("receipt_path", "recurring_id").eq("id", expense_id).eq("user_id", user_id).single().execute()
+        
+        if not expense_result.data:
+            raise DatabaseError(f"Expense with ID {expense_id} not found")
+        
+        expense_data = expense_result.data
+        receipt_path = expense_data.get("receipt_path")
+        recurring_id = expense_data.get("recurring_id")
 
+        # Delete the expense
         supabase.table("expenses").delete().eq("id", expense_id).eq("user_id", user_id).execute()
 
+        # If this expense was generated from a recurring expense, ask user if they want to delete the recurring expense too
+        if recurring_id and recurring_id not in [None, '', 'null', 'None']:
+            # Check if this was the only expense generated from this recurring expense
+            remaining_expenses = supabase.table("expenses").select("id").eq("recurring_id", recurring_id).eq("user_id", user_id).execute()
+            
+            if not remaining_expenses.data:
+                # No other expenses from this recurring expense, delete the recurring expense
+                supabase.table("recurring_expenses").delete().eq("id", recurring_id).eq("user_id", user_id).execute()
+                logger.info(f"Deleted recurring expense {recurring_id} as it had no remaining generated expenses")
+
+        # Clean up receipt file if it exists
         if receipt_path:
             receipt_file = Path(receipt_path)
             if receipt_file.exists():
@@ -339,6 +358,24 @@ def delete_custom_category(user_id: str, category_name: str) -> None:
         logger.error(f"Error deleting custom category: {e}")
         raise DatabaseError(f"Failed to delete custom category: {e}")
 
+def sync_default_categories_with_user_settings(user_id: str) -> None:
+    """Sync default categories from categories.json with user settings."""
+    try:
+        settings = get_user_settings(user_id)
+        
+        # Get current custom categories or empty dict
+        current_custom = settings.get("custom_categories", {})
+        
+        # If user has no custom categories, or if they want to sync with defaults
+        if not current_custom or current_custom == {}:
+            # Copy default categories to user settings
+            settings["custom_categories"] = DEFAULT_CATEGORIES.copy()
+            update_user_settings(user_id, settings)
+            logger.info(f"Synced default categories for user {user_id}")
+            
+    except Exception as e:
+        logger.error(f"Error syncing default categories: {e}")
+
 def get_available_categories(user_id: str = None) -> List[str]:
     """Get list of available expense categories including custom ones."""
     if user_id is None:
@@ -346,7 +383,14 @@ def get_available_categories(user_id: str = None) -> List[str]:
     
     try:
         settings = get_user_settings(user_id)
-        categories = settings.get("custom_categories", DEFAULT_CATEGORIES)
+        categories = settings.get("custom_categories", {})
+        
+        # If user has no custom categories, sync with defaults
+        if not categories:
+            sync_default_categories_with_user_settings(user_id)
+            settings = get_user_settings(user_id)  # Refresh settings
+            categories = settings.get("custom_categories", DEFAULT_CATEGORIES)
+            
         return [cat for cat in categories.keys() if cat != "_metadata"]
     except Exception as e:
         logger.error(f"Error getting categories: {e}")
@@ -369,6 +413,13 @@ def add_recurring_expense(user_id: str, recurring_data: Dict) -> str:
         
         next_due = calculate_next_due_date(start_date, recurring_data['frequency'])
         
+        # Default to averaging for quarterly and yearly expenses
+        frequency = recurring_data['frequency']
+        if frequency in ['quarterly', 'yearly']:
+            default_averaging = 'monthly'
+        else:
+            default_averaging = 'none'
+        
         insert_data = {
             "user_id": user_id,
             "name": recurring_data['name'].strip(),
@@ -377,13 +428,13 @@ def add_recurring_expense(user_id: str, recurring_data: Dict) -> str:
             "category": recurring_data['category'],
             "description": recurring_data.get('description', '').strip() if recurring_data.get('description') else None,
             "payment_method": recurring_data['payment_method'],
-            "frequency": recurring_data['frequency'],
+            "frequency": frequency,
             "start_date": start_date.isoformat(),
             "end_date": recurring_data.get('end_date').isoformat() if recurring_data.get('end_date') else None,
             "next_due_date": next_due.isoformat(),
             "last_generated_date": None,
             "is_active": True,
-            "averaging_type": recurring_data.get('averaging_type', 'none'),
+            "averaging_type": recurring_data.get('averaging_type', default_averaging),
             "created_at": datetime.now().isoformat()
         }
         
