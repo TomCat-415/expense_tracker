@@ -8,6 +8,13 @@ import pandas as pd
 import time
 import plotly.graph_objects as go
 from utils import stripe_client
+import os
+
+# Use Render's assigned port if available, fallback to 8501 for local
+port = int(os.environ.get("PORT", 8501))
+os.environ["STREAMLIT_SERVER_PORT"] = str(port)
+os.environ["STREAMLIT_SERVER_ENABLECORS"] = "false"
+os.environ["STREAMLIT_SERVER_ENABLEXSRFPROTECTION"] = "false"
 
 from utils.database import (
     DatabaseError,
@@ -345,12 +352,30 @@ def logout():
     st.success("Logged out.")
     st.rerun()
 
-# 2. Show login or signup screen until authenticated
+# 2. Show landing info + login/signup screen until authenticated
 if st.session_state.user is None:
+
+    # 🎯 Show Stripe-friendly info *before* login
     if st.session_state.auth_mode == "login":
+        st.markdown("## 💸 Welcome to Expensei")
+        st.markdown("""
+        Track smarter. Save faster.  
+        Expensei helps you manage spending, crush short-term goals, and grow your savings — effortlessly.
+
+        **Features:**
+        - 🧾 Receipt scanning  
+        - 📊 Real-time analytics  
+        - 🎯 Custom budget goals  
+        - ☁️ Secure cloud backup  
+
+        👉 Try [Expensei Pro](https://buy.stripe.com/test_bJe3cufIs1iF1lkcLH5AQ01) for just ¥500/month
+        """)
+        st.divider()
         login()
+    
     else:
         signup()
+
     st.stop()
 
 # 3. User is authenticated: show main app
