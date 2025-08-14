@@ -2385,7 +2385,7 @@ with tab8:
 
     st.markdown("If you find this app useful, feel free to buy me a flat white with an extra espresso! 🙏")
 
-    COFFEE_PRICE = 200  # Yen
+    COFFEE_PRICE = 100  # Yen
 
     def create_checkout_session():
         session = stripe_client.stripe.checkout.Session.create(
@@ -2404,7 +2404,7 @@ with tab8:
         )
         return session.url
 
-    if st.button("Buy Me a Coffee (¥200)"):
+    if st.button("Buy Me a Coffee (¥100)"):
         url = create_checkout_session()
         st.success("Redirecting you to Stripe Checkout...")
 
